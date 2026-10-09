@@ -15,7 +15,7 @@
 | 7 | Tool System Foundation | ✅ Complete | Required tool tests (9) and TypeScript check pass; commit `40b09f23864ad78503c49b87e6bbb42ca9e20f4b` verified on `origin/main` |
 | 8 | Execution & Git Tools | ✅ Complete | Focused tests (9) and TypeScript check pass; commit `8626fbe71602f4e8cb56c6271cb892f6cb7e62d4` verified on `origin/main` |
 | 9 | Search & Memory Tools | ✅ Complete | Tools suite (32) and TypeScript check pass; commit `cf56ad071ca533320b4b109d3b3aab29bf8dbaee` verified on `origin/main` |
-| 10 | Agent Core | 🔄 In Progress | Agent tests (6) and TypeScript check pass; final commit/push pending |
+| 10 | Agent Core | ✅ Complete | Agent tests (6) and TypeScript check pass; commit `2ca8a5d69ce53da887b7775981488fb729a6fce9` verified on `origin/main` |
 | 11 | Orchestration Layer | ⬜ Not Started | — |
 | 12 | CLI & Entry Point | ⬜ Not Started | — |
 
@@ -53,4 +53,4 @@
 - Phase 9 Git: commit `cf56ad071ca533320b4b109d3b3aab29bf8dbaee` pushed to `origin/main`; `git ls-remote` confirmed the remote ref matches.
 - Phase 10 implementation: added FakeLLM, plan/act Agent loop with plan reflection and bounded steps, tool error capture and status callbacks, plus a search-only ResearchAgent that returns validated structured briefs.
 - Phase 10 validation: `bun test src/agent/` — PASS (6 tests across 2 files); `bunx tsc --noEmit` — PASS; `git diff --check` — PASS.
-- Phase 10 Git: not committed; remote push not attempted.
+- Phase 10 Git: commit `2ca8a5d69ce53da887b7775981488fb729a6fce9` pushed to `origin/main`; `git ls-remote` confirmed the remote ref matches.
