@@ -11,7 +11,7 @@
 | 3 | Configuration Management | ✅ Complete | TypeScript and 27 tests pass; commit `e61cce9bdf6c19660948b2952ffa7a0d90d26643` verified on `origin/main` |
 | 4 | Logging | ✅ Complete | TypeScript and 34 tests pass; commit `679bacdc56d84beba91bd343dffb25f216a80b8b` verified on `origin/main` |
 | 5 | LLM Provider Layer | ✅ Complete | Provider tests (9) and TypeScript pass; commit `036d7c35495213e3010fabdeb75f988e7ff16ef9` verified on `origin/main` |
-| 6 | Security & Guardrails | 🔄 In Progress | Implementation and focused validation pass; final commit/push pending |
+| 6 | Security & Guardrails | ✅ Complete | Focused acceptance tests and typecheck pass; commit `6264803e62ae44e6d24d9db9fe0cf6e5d9bd506b` verified on `origin/main` |
 | 7 | Tool System Foundation | ⬜ Not Started | — |
 | 8 | Execution & Git Tools | ⬜ Not Started | — |
 | 9 | Search & Memory Tools | ⬜ Not Started | — |
@@ -39,4 +39,6 @@
 - Phase 6 specification correction: the requested 32-character hex token cannot exceed 4 bits/character; per user direction, the test uses a 32-character base64/alphanumeric token above 4.5 bits. Hex entropy is separately verified as exactly 4 bits/character.
 - Phase 6 validation: `bun test src/guardrails/` — PASS (14 tests); `bunx tsc --noEmit` — PASS; `git diff --check` — PASS. Full `bun test` stopped at `src/logger/AgentLogger.test.ts` without output after 60 seconds; interrupted. This reproduces the previously recorded unrelated Phase 4 logger-suite hang.
 - Phase 6 provider support: `GeminiProvider.generateContent` now honors a requested model override so guardrails can use `GeminiConfig.GUARD_MODEL`; a focused test covers it.
-- Phase 6 Git: not committed; remote push not attempted.
+- Phase 6 Git: commit `6264803e62ae44e6d24d9db9fe0cf6e5d9bd506b` pushed to `origin/main`; `git ls-remote` confirmed the remote ref matches. Working tree was clean after push verification.
+- The repository ignores `/docs/*` except progress files. The local copies of `docs/architecture/security.md` and `docs/implementation/phase-06.md` were updated to align/document the output-secret block behavior and the entropy typo correction; these spec-copy edits are intentionally not force-added to Git.
+- Full repository test suite remains blocked by a hang in the existing `src/logger/AgentLogger.test.ts` (no output for 60 seconds; interrupted). Phase 6's required `bun test src/guardrails/` passes independently; this pre-existing Phase 4 issue does not affect the Phase 6 acceptance checks.
