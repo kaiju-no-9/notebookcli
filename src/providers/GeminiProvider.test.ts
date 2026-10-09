@@ -107,6 +107,19 @@ describe("GeminiProvider", (): void => {
     expect(response.functionCalls).toBeNull();
   });
 
+  it("allows guard calls to select the lighter guard model", async (): Promise<void> => {
+    let requestedModel: string | undefined;
+    const model: MockModel = {
+      generateContent: async (request: unknown): Promise<unknown> => {
+        requestedModel = (request as { model: string }).model;
+        return mockResponse([{ text: '{"safe":true}' }]);
+      },
+      generateContentStream: async (): Promise<AsyncGenerator<{ text?: string }>> => (async function* (): AsyncGenerator<{ text?: string }> {})(),
+    };
+    await new GeminiProvider(mockClient(model)).generateContent([], undefined, { model: "gemini-2.0-flash" });
+    expect(requestedModel).toBe("gemini-2.0-flash");
+  });
+
   it("maps tool responses to Gemini user content", async (): Promise<void> => {
     let sent: unknown;
     const model: MockModel = {

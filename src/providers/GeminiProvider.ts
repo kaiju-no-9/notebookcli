@@ -93,11 +93,13 @@ export class GeminiProvider implements LLMProvider {
     config?: Record<string, unknown>,
   ): Promise<LLMResponse> {
     try {
+      const requestedModel = config?.model;
+      const { model: _model, ...generationOptions } = config ?? {};
       const requestConfig: GenerateContentConfig = {
         maxOutputTokens: GeminiConfig.MAX_OUTPUT_TOKENS,
         temperature: GeminiConfig.TEMPERATURE,
         topP: GeminiConfig.TOP_P,
-        ...(config as GenerateContentConfig | undefined),
+        ...(generationOptions as GenerateContentConfig),
       };
       if (tools !== undefined && tools.length > 0) {
         const declarations = toFunctionDeclarations(tools);
@@ -105,7 +107,7 @@ export class GeminiProvider implements LLMProvider {
         requestConfig.tools = [...(requestConfig.tools ?? []), toolConfig];
       }
       const response = await (await this.clientPromise).models.generateContent({
-        model: GeminiConfig.PRIMARY_MODEL,
+        model: typeof requestedModel === "string" && requestedModel.length > 0 ? requestedModel : GeminiConfig.PRIMARY_MODEL,
         contents: toGeminiContents(messages),
         config: requestConfig,
       });
