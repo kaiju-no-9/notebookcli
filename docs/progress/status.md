@@ -14,7 +14,7 @@
 | 6 | Security & Guardrails | ✅ Complete | Focused acceptance tests and typecheck pass; commit `6264803e62ae44e6d24d9db9fe0cf6e5d9bd506b` verified on `origin/main` |
 | 7 | Tool System Foundation | ✅ Complete | Required tool tests (9) and TypeScript check pass; commit `40b09f23864ad78503c49b87e6bbb42ca9e20f4b` verified on `origin/main` |
 | 8 | Execution & Git Tools | ✅ Complete | Focused tests (9) and TypeScript check pass; commit `8626fbe71602f4e8cb56c6271cb892f6cb7e62d4` verified on `origin/main` |
-| 9 | Search & Memory Tools | ⬜ Not Started | — |
+| 9 | Search & Memory Tools | 🔄 In Progress | Tools suite (32) and TypeScript check pass; final commit/push pending |
 | 10 | Agent Core | ⬜ Not Started | — |
 | 11 | Orchestration Layer | ⬜ Not Started | — |
 | 12 | CLI & Entry Point | ⬜ Not Started | — |
@@ -48,3 +48,6 @@
 - Phase 8 implementation: added CommandPolicy classification, Docker compose lifecycle/execution, `execute_command`, and host-side `git_command`; Compose now gives the sandbox the stable `sandbox` container name expected by the executor.
 - Phase 8 validation: `bun test src/tools/CommandPolicy.test.ts src/tools/ExecutionManager.test.ts src/tools/GitTools.test.ts` — PASS (9 tests); `bunx tsc --noEmit` — PASS; `git diff --check` — PASS. Docker CLI/Compose are installed, but `docker info` is blocked by permission denied on `~/.docker/run/docker.sock`, so live container execution could not be verified; lifecycle/command capture was tested with mocked subprocesses as specified.
 - Phase 8 Git: commit `8626fbe71602f4e8cb56c6271cb892f6cb7e62d4` pushed to `origin/main`; `git ls-remote` confirmed the remote ref matches.
+- Phase 9 implementation: added Tavily → conditional GitHub → DuckDuckGo search cascade, DNS/IP checks before outbound HTTPS requests (including redirects), timeout handling, and memory REST tools with secret and query validation. Credentials use ConfigManager (`TAVILY_API_KEY`, optional `GITHUB_TOKEN`); memory endpoint reads `MEMORY_API_URL`. Memory saving tool description restricts use to explicit user requests.
+- Phase 9 validation: `bun test src/tools/` — PASS (32 tests across 8 files); `bunx tsc --noEmit` — PASS; `git diff --check` — PASS. Coverage includes missing Tavily key fallback, provider failures, private/resolved IP checks, memory secret rejection, request URL/body encoding, and existing Phase 7–8 regressions.
+- Phase 9 Git: not committed; remote push not attempted.
