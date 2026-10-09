@@ -2,7 +2,7 @@
 
 ## Project Status
 - Overall status: IN PROGRESS
-- Current phase: Phase 4 — Logging
+- Current phase: Phase 4 — Logging (commit and push)
 - Completed phases: 3 of 12
 - Last updated: 2026-10-09
 - Repository branch: `main`
@@ -69,13 +69,30 @@
 ### Remaining Work
 - Phase 3 is complete. Read the Phase 4 specification and its related documents, inspect existing code, then implement Phase 4.
 
+## Phase 4 — Logging
+- Implemented `AgentLogger` with Winston console output to stderr, timestamped log lines, configurable log levels, and recursive redaction of known API key, token, AWS key, JWT, and private-key header patterns.
+- Metadata sanitization handles nested values, circular references, excessive depth, and unserializable objects. Logging failures are swallowed to protect application flow.
+
+### Validation
+- `bun test`: PASS — 34 tests across 4 files; 0 failures.
+- `bunx tsc --noEmit`: PASS.
+- `git diff --check`: PASS.
+- Logger tests capture stderr and cover output format, redaction in messages and nested metadata, levels, and circular metadata.
+
+### Git
+- Phase 4 implementation and progress changes are not yet committed or pushed.
+
+### Remaining Work
+- Commit Phase 4, push to `origin/main`, verify the remote commit, then proceed to Phase 5.
+
 ## Blockers
 - None currently.
 
 ## Next Action
-Commit and push the verified Phase 3 implementation, then read the Phase 4 specification and related documents.
+Commit and push the verified Phase 4 implementation, then read the Phase 5 specification and related documents.
 
 ## Execution History
 - 2026-10-09 — Phase 1 completed — acceptance checks passed; commit `a6e902b00139ff85a88861a820681250c0718542` pushed to `origin/main` and verified with `git ls-remote`.
 - 2026-10-09 — Phase 2 complete — typecheck and 22 tests passed; commit `2fbbe7f8c39d8fd6d7030e2273c998f81b7b2d02` pushed to `origin/main` and verified with `git ls-remote`.
 - 2026-10-09 — Phase 3 complete — TypeScript and 27 tests pass; commit `e61cce9bdf6c19660948b2952ffa7a0d90d26643` pushed to `origin/main` and verified with `git ls-remote`.
+- 2026-10-09 — Phase 4 implementation and tests complete; TypeScript and all 34 tests pass. Commit/push pending.
