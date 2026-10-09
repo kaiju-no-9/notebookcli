@@ -10,7 +10,7 @@
 | 2 | Core Types & Interfaces | ✅ Complete | Typecheck and 22 tests pass; commit `2fbbe7f8c39d8fd6d7030e2273c998f81b7b2d02` verified on `origin/main` |
 | 3 | Configuration Management | ✅ Complete | TypeScript and 27 tests pass; commit `e61cce9bdf6c19660948b2952ffa7a0d90d26643` verified on `origin/main` |
 | 4 | Logging | ✅ Complete | TypeScript and 34 tests pass; commit `679bacdc56d84beba91bd343dffb25f216a80b8b` verified on `origin/main` |
-| 5 | LLM Provider Layer | 🔄 In Progress | Provider tests (9) and TypeScript pass; commit and push verification pending; full suite stalls in Phase 4 logger test |
+| 5 | LLM Provider Layer | ✅ Complete | Provider tests (9) and TypeScript pass; commit `036d7c35495213e3010fabdeb75f988e7ff16ef9` verified on `origin/main` |
 | 6 | Security & Guardrails | ⬜ Not Started | — |
 | 7 | Tool System Foundation | ⬜ Not Started | — |
 | 8 | Execution & Git Tools | ⬜ Not Started | — |
@@ -34,3 +34,4 @@
 - Phase 2 is complete and pushed. All 22 phase tests pass; `bunx tsc --noEmit` passes.
 - Phase 3 is complete and pushed. Configuration tests and the full suite pass (27 tests).
 - Phase 4 is complete and pushed. Logger tests and the full suite pass (34 tests).
+- Phase 5 is complete and pushed. Provider tests (9) and `bunx tsc --noEmit` pass. A later full-suite rerun stalled in the Phase 4 logger test.

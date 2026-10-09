@@ -2,8 +2,8 @@
 
 ## Project Status
 - Overall status: IN PROGRESS
-- Current phase: Phase 5 — LLM Provider Layer (commit and push)
-- Completed phases: 4 of 12
+- Current phase: Phase 6 — Security & Guardrails
+- Completed phases: 5 of 12
 - Last updated: 2026-10-09
 - Repository branch: `main`
 
@@ -98,10 +98,11 @@
 - Full `bun test` was attempted but did not finish: it stalled at the Phase 4 logger test's first captured write. The Phase 5 test file passes independently; this full-suite runner issue remains noted for follow-up.
 
 ### Git
-- Phase 5 implementation and progress changes are not yet committed or pushed.
+- Phase 5 commit: `036d7c35495213e3010fabdeb75f988e7ff16ef9` (`feat(phase-5): implement Gemini provider and streaming`).
+- Push: VERIFIED — `git ls-remote origin refs/heads/main` returned the same commit hash.
 
 ### Remaining Work
-- Commit Phase 5, push to `origin/main`, verify the remote commit, then proceed to Phase 6.
+- Phase 5 is complete. Read the Phase 6 specification and its related documents, inspect existing code, then implement Phase 6.
 
 ## Blockers
 - None currently.
@@ -114,4 +115,4 @@ Commit and push the verified Phase 5 implementation, then read the Phase 6 speci
 - 2026-10-09 — Phase 2 complete — typecheck and 22 tests passed; commit `2fbbe7f8c39d8fd6d7030e2273c998f81b7b2d02` pushed to `origin/main` and verified with `git ls-remote`.
 - 2026-10-09 — Phase 3 complete — TypeScript and 27 tests pass; commit `e61cce9bdf6c19660948b2952ffa7a0d90d26643` pushed to `origin/main` and verified with `git ls-remote`.
 - 2026-10-09 — Phase 4 complete — TypeScript and 34 tests pass; commit `679bacdc56d84beba91bd343dffb25f216a80b8b` pushed to `origin/main` and verified with `git ls-remote`.
-- 2026-10-09 — Phase 5 provider tests (9) and TypeScript pass. Full-suite run stalled in the earlier logger tests; commit/push pending.
+- 2026-10-09 — Phase 5 complete — provider tests (9) and TypeScript pass; commit `036d7c35495213e3010fabdeb75f988e7ff16ef9` pushed to `origin/main` and verified with `git ls-remote`. Full-suite run stalled at the Phase 4 logger test; the earlier Phase 4 targeted/full verification remains recorded above.
