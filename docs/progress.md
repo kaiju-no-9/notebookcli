@@ -2,7 +2,7 @@
 
 ## Project Status
 - Overall status: IN PROGRESS
-- Current phase: Phase 5 — LLM Provider Layer
+- Current phase: Phase 5 — LLM Provider Layer (commit and push)
 - Completed phases: 4 of 12
 - Last updated: 2026-10-09
 - Repository branch: `main`
@@ -86,14 +86,32 @@
 ### Remaining Work
 - Phase 4 is complete. Read the Phase 5 specification and its related documents, inspect existing code, then implement Phase 5.
 
+## Phase 5 — LLM Provider Layer
+- Implemented Gemini content generation with Zod v4 JSON Schema conversion, Oden-to-Gemini message mapping, tool function declarations, usage parsing, and error classification.
+- Implemented `GeminiStreaming` and provider streaming with incremental token callbacks and accumulated text.
+- Added 9 mocked provider tests covering schema conversion, message and tool request shape, text/function responses, usage, error classification, and both streaming APIs.
+
+### Validation
+- `bun test src/providers/GeminiProvider.test.ts`: PASS — 9 tests, 0 failures.
+- `bunx tsc --noEmit`: PASS.
+- `git diff --check`: PASS.
+- Full `bun test` was attempted but did not finish: it stalled at the Phase 4 logger test's first captured write. The Phase 5 test file passes independently; this full-suite runner issue remains noted for follow-up.
+
+### Git
+- Phase 5 implementation and progress changes are not yet committed or pushed.
+
+### Remaining Work
+- Commit Phase 5, push to `origin/main`, verify the remote commit, then proceed to Phase 6.
+
 ## Blockers
 - None currently.
 
 ## Next Action
-Commit and push the verified Phase 4 implementation, then read the Phase 5 specification and related documents.
+Commit and push the verified Phase 5 implementation, then read the Phase 6 specification and related documents.
 
 ## Execution History
 - 2026-10-09 — Phase 1 completed — acceptance checks passed; commit `a6e902b00139ff85a88861a820681250c0718542` pushed to `origin/main` and verified with `git ls-remote`.
 - 2026-10-09 — Phase 2 complete — typecheck and 22 tests passed; commit `2fbbe7f8c39d8fd6d7030e2273c998f81b7b2d02` pushed to `origin/main` and verified with `git ls-remote`.
 - 2026-10-09 — Phase 3 complete — TypeScript and 27 tests pass; commit `e61cce9bdf6c19660948b2952ffa7a0d90d26643` pushed to `origin/main` and verified with `git ls-remote`.
 - 2026-10-09 — Phase 4 complete — TypeScript and 34 tests pass; commit `679bacdc56d84beba91bd343dffb25f216a80b8b` pushed to `origin/main` and verified with `git ls-remote`.
+- 2026-10-09 — Phase 5 provider tests (9) and TypeScript pass. Full-suite run stalled in the earlier logger tests; commit/push pending.
