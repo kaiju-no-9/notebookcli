@@ -12,7 +12,7 @@
 | 4 | Logging | ✅ Complete | TypeScript and 34 tests pass; commit `679bacdc56d84beba91bd343dffb25f216a80b8b` verified on `origin/main` |
 | 5 | LLM Provider Layer | ✅ Complete | Provider tests (9) and TypeScript pass; commit `036d7c35495213e3010fabdeb75f988e7ff16ef9` verified on `origin/main` |
 | 6 | Security & Guardrails | ✅ Complete | Focused acceptance tests and typecheck pass; commit `6264803e62ae44e6d24d9db9fe0cf6e5d9bd506b` verified on `origin/main` |
-| 7 | Tool System Foundation | 🔄 In Progress | Required tool tests (9) and TypeScript check pass; final commit/push pending |
+| 7 | Tool System Foundation | ✅ Complete | Required tool tests (9) and TypeScript check pass; commit `40b09f23864ad78503c49b87e6bbb42ca9e20f4b` verified on `origin/main` |
 | 8 | Execution & Git Tools | ⬜ Not Started | — |
 | 9 | Search & Memory Tools | ⬜ Not Started | — |
 | 10 | Agent Core | ⬜ Not Started | — |
@@ -44,4 +44,4 @@
 - Full repository test suite remains blocked by a hang in the existing `src/logger/AgentLogger.test.ts` (no output for 60 seconds; interrupted). Phase 6's required `bun test src/guardrails/` passes independently; this pre-existing Phase 4 issue does not affect the Phase 6 acceptance checks.
 - Phase 7 implementation: added `coding_context_tool`, `code_tool`, and `get_project_tree`, including Zod parameter validation, string error results, and registry registration helpers.
 - Phase 7 validation: `bun test src/tools/CodingTools.test.ts` — PASS (6 tests); `bun test src/tools/FileTools.test.ts` — PASS (3 tests); `bunx tsc --noEmit` — PASS; `git diff --check` — PASS.
-- Phase 7 Git: not committed; remote push not attempted.
+- Phase 7 Git: commit `40b09f23864ad78503c49b87e6bbb42ca9e20f4b` pushed to `origin/main`; `git ls-remote` confirmed the remote ref matches.
