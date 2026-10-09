@@ -16,7 +16,7 @@
 | 8 | Execution & Git Tools | ✅ Complete | Focused tests (9) and TypeScript check pass; commit `8626fbe71602f4e8cb56c6271cb892f6cb7e62d4` verified on `origin/main` |
 | 9 | Search & Memory Tools | ✅ Complete | Tools suite (32) and TypeScript check pass; commit `cf56ad071ca533320b4b109d3b3aab29bf8dbaee` verified on `origin/main` |
 | 10 | Agent Core | ✅ Complete | Agent tests (6) and TypeScript check pass; commit `2ca8a5d69ce53da887b7775981488fb729a6fce9` verified on `origin/main` |
-| 11 | Orchestration Layer | ⬜ Not Started | — |
+| 11 | Orchestration Layer | 🔄 In Progress | Orchestration tests (10) and TypeScript check pass; final commit/push pending |
 | 12 | CLI & Entry Point | ⬜ Not Started | — |
 
 ## Status Legend
@@ -55,3 +55,6 @@
 - Phase 10 validation: `bun test src/agent/` — PASS (6 tests across 2 files); `bunx tsc --noEmit` — PASS; `git diff --check` — PASS.
 - Phase 10 Git: commit `2ca8a5d69ce53da887b7775981488fb729a6fce9` pushed to `origin/main`; `git ls-remote` confirmed the remote ref matches.
 - Phase 10 follow-up review: removed an unreachable duplicate condition in the Agent no-response path; `bun test src/agent/` (6 tests), `bunx tsc --noEmit`, and `git diff --check` pass. Commit `ad918ecc51efa2e41353c6f59d071d4e9b53cdd2` is verified on `origin/main`.
+- Phase 11 implementation: added structured Supervisor classification with GUARD_MODEL and CODE_ONLY fallback; added Orchestrator input/output guard stages, DIRECT/CODE_ONLY/RESEARCH_AND_CODE routing, research fallback, output filtering, buffered direct-stream tokens, callbacks, and per-instance conversation history.
+- Phase 11 validation: `bun test src/orchestration/` — PASS (10 tests across 2 files); `bunx tsc --noEmit` — PASS; `git diff --check` — PASS.
+- Phase 11 Git: not committed; remote push not attempted.
