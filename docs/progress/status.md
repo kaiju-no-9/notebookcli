@@ -7,8 +7,8 @@
 | Phase | Name | Status | Evidence |
 |---|---|---|---|
 | 1 | Project Scaffolding | ✅ Complete | Acceptance checks pass; commit `a6e902b00139ff85a88861a820681250c0718542` verified on `origin/main` |
-| 2 | Core Types & Interfaces | 🔄 In Progress | Typecheck and 22 tests pass; commit and push verification pending |
-| 3 | Configuration Management | ⬜ Not Started | — |
+| 2 | Core Types & Interfaces | ✅ Complete | Typecheck and 22 tests pass; commit `2fbbe7f8c39d8fd6d7030e2273c998f81b7b2d02` verified on `origin/main` |
+| 3 | Configuration Management | 🔄 In Progress | Config tests and full suite pass (27 tests); commit and push verification pending |
 | 4 | Logging | ⬜ Not Started | — |
 | 5 | LLM Provider Layer | ⬜ Not Started | — |
 | 6 | Security & Guardrails | ⬜ Not Started | — |
@@ -31,4 +31,5 @@
 ## Known Issues
 
 - Phase 1 is complete and pushed. `bun test` reports no test files because this scaffolding phase defines none.
-- Phase 2 implementation and validation are complete; its required push is pending.
+- Phase 2 is complete and pushed. All 22 phase tests pass; `bunx tsc --noEmit` passes.
+- Phase 3 implementation and validation are complete; its required push is pending.
