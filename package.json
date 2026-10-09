@@ -1,0 +1,35 @@
+{
+  "name": "oden-agent",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": { "oden": "./src/index.ts" },
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun run --watch src/index.ts",
+    "typecheck": "bunx tsc --noEmit",
+    "test": "bun test",
+    "lint": "bunx tsc --noEmit"
+  },
+  "dependencies": {
+    "@google/genai": "latest",
+    "@inquirer/prompts": "latest",
+    "@tavily/core": "latest",
+    "chalk": "^5.0.0",
+    "commander": "latest",
+    "figlet": "latest",
+    "gradient-string": "latest",
+    "keytar": "latest",
+    "marked": "latest",
+    "marked-terminal": "latest",
+    "ora": "latest",
+    "winston": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@types/figlet": "latest",
+    "@types/gradient-string": "latest",
+    "@types/node": "latest",
+    "bun-types": "latest",
+    "typescript": "latest"
+  }
+}

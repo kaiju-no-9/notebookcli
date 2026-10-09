@@ -1,0 +1,21 @@
+services:
+  sandbox:
+    build:
+      context: .
+      dockerfile: sandbox.Dockerfile
+    user: "1000:1000"
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+          pids: 128
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./workspace:/home/sandbox/workspace
+    working_dir: /home/sandbox/workspace
+    stdin_open: true
+    tty: true

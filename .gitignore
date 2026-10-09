@@ -1,41 +1,24 @@
-# Documentation (local only)
-docs/
-
-# Dependencies
 node_modules/
-
-# Build output
 dist/
-
-# TypeScript compiled files
 *.js
 *.d.ts
 *.map
-!jest.config.js
-!bun.config.js
-
-# Environment & secrets
 .env
 .env.*
 *.enc
 .oden/
-
-# OS files
 .DS_Store
 Thumbs.db
-
-# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# Docker
 workspace/
-
-# Logs
 *.log
 logs/
-
-# Test coverage
 coverage/
+.codex-tmp/
+/docs/*
+!/docs/progress.md
+!/docs/progress/
+!/docs/progress/status.md
