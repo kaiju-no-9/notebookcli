@@ -2,8 +2,8 @@
 
 ## Project Status
 - Overall status: IN PROGRESS
-- Current phase: Phase 4 — Logging (commit and push)
-- Completed phases: 3 of 12
+- Current phase: Phase 5 — LLM Provider Layer
+- Completed phases: 4 of 12
 - Last updated: 2026-10-09
 - Repository branch: `main`
 
@@ -80,10 +80,11 @@
 - Logger tests capture stderr and cover output format, redaction in messages and nested metadata, levels, and circular metadata.
 
 ### Git
-- Phase 4 implementation and progress changes are not yet committed or pushed.
+- Phase 4 commit: `679bacdc56d84beba91bd343dffb25f216a80b8b` (`feat(phase-4): add redacting structured logger`).
+- Push: VERIFIED — `git ls-remote origin refs/heads/main` returned the same commit hash.
 
 ### Remaining Work
-- Commit Phase 4, push to `origin/main`, verify the remote commit, then proceed to Phase 5.
+- Phase 4 is complete. Read the Phase 5 specification and its related documents, inspect existing code, then implement Phase 5.
 
 ## Blockers
 - None currently.
@@ -95,4 +96,4 @@ Commit and push the verified Phase 4 implementation, then read the Phase 5 speci
 - 2026-10-09 — Phase 1 completed — acceptance checks passed; commit `a6e902b00139ff85a88861a820681250c0718542` pushed to `origin/main` and verified with `git ls-remote`.
 - 2026-10-09 — Phase 2 complete — typecheck and 22 tests passed; commit `2fbbe7f8c39d8fd6d7030e2273c998f81b7b2d02` pushed to `origin/main` and verified with `git ls-remote`.
 - 2026-10-09 — Phase 3 complete — TypeScript and 27 tests pass; commit `e61cce9bdf6c19660948b2952ffa7a0d90d26643` pushed to `origin/main` and verified with `git ls-remote`.
-- 2026-10-09 — Phase 4 implementation and tests complete; TypeScript and all 34 tests pass. Commit/push pending.
+- 2026-10-09 — Phase 4 complete — TypeScript and 34 tests pass; commit `679bacdc56d84beba91bd343dffb25f216a80b8b` pushed to `origin/main` and verified with `git ls-remote`.
