@@ -7,7 +7,7 @@
 | Phase | Name | Status | Evidence |
 |---|---|---|---|
 | 1 | Project Scaffolding | ✅ Complete | Acceptance checks pass; commit `a6e902b00139ff85a88861a820681250c0718542` verified on `origin/main` |
-| 2 | Core Types & Interfaces | ⬜ Not Started | — |
+| 2 | Core Types & Interfaces | 🔄 In Progress | Typecheck and 22 tests pass; commit and push verification pending |
 | 3 | Configuration Management | ⬜ Not Started | — |
 | 4 | Logging | ⬜ Not Started | — |
 | 5 | LLM Provider Layer | ⬜ Not Started | — |
@@ -31,3 +31,4 @@
 ## Known Issues
 
 - Phase 1 is complete and pushed. `bun test` reports no test files because this scaffolding phase defines none.
+- Phase 2 implementation and validation are complete; its required push is pending.
