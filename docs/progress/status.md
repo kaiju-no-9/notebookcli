@@ -13,7 +13,7 @@
 | 5 | LLM Provider Layer | ✅ Complete | Provider tests (9) and TypeScript pass; commit `036d7c35495213e3010fabdeb75f988e7ff16ef9` verified on `origin/main` |
 | 6 | Security & Guardrails | ✅ Complete | Focused acceptance tests and typecheck pass; commit `6264803e62ae44e6d24d9db9fe0cf6e5d9bd506b` verified on `origin/main` |
 | 7 | Tool System Foundation | ✅ Complete | Required tool tests (9) and TypeScript check pass; commit `40b09f23864ad78503c49b87e6bbb42ca9e20f4b` verified on `origin/main` |
-| 8 | Execution & Git Tools | 🔄 In Progress | Focused tests (9) and TypeScript check pass; final commit/push pending |
+| 8 | Execution & Git Tools | ✅ Complete | Focused tests (9) and TypeScript check pass; commit `8626fbe71602f4e8cb56c6271cb892f6cb7e62d4` verified on `origin/main` |
 | 9 | Search & Memory Tools | ⬜ Not Started | — |
 | 10 | Agent Core | ⬜ Not Started | — |
 | 11 | Orchestration Layer | ⬜ Not Started | — |
@@ -47,4 +47,4 @@
 - Phase 7 Git: commit `40b09f23864ad78503c49b87e6bbb42ca9e20f4b` pushed to `origin/main`; `git ls-remote` confirmed the remote ref matches.
 - Phase 8 implementation: added CommandPolicy classification, Docker compose lifecycle/execution, `execute_command`, and host-side `git_command`; Compose now gives the sandbox the stable `sandbox` container name expected by the executor.
 - Phase 8 validation: `bun test src/tools/CommandPolicy.test.ts src/tools/ExecutionManager.test.ts src/tools/GitTools.test.ts` — PASS (9 tests); `bunx tsc --noEmit` — PASS; `git diff --check` — PASS. Docker CLI/Compose are installed, but `docker info` is blocked by permission denied on `~/.docker/run/docker.sock`, so live container execution could not be verified; lifecycle/command capture was tested with mocked subprocesses as specified.
-- Phase 8 Git: not committed; remote push not attempted.
+- Phase 8 Git: commit `8626fbe71602f4e8cb56c6271cb892f6cb7e62d4` pushed to `origin/main`; `git ls-remote` confirmed the remote ref matches.
