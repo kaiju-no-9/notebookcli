@@ -15,7 +15,7 @@
 | 7 | Tool System Foundation | ✅ Complete | Required tool tests (9) and TypeScript check pass; commit `40b09f23864ad78503c49b87e6bbb42ca9e20f4b` verified on `origin/main` |
 | 8 | Execution & Git Tools | ✅ Complete | Focused tests (9) and TypeScript check pass; commit `8626fbe71602f4e8cb56c6271cb892f6cb7e62d4` verified on `origin/main` |
 | 9 | Search & Memory Tools | ✅ Complete | Tools suite (32) and TypeScript check pass; commit `cf56ad071ca533320b4b109d3b3aab29bf8dbaee` verified on `origin/main` |
-| 10 | Agent Core | ⬜ Not Started | — |
+| 10 | Agent Core | 🔄 In Progress | Agent tests (6) and TypeScript check pass; final commit/push pending |
 | 11 | Orchestration Layer | ⬜ Not Started | — |
 | 12 | CLI & Entry Point | ⬜ Not Started | — |
 
@@ -51,3 +51,6 @@
 - Phase 9 implementation: added Tavily → conditional GitHub → DuckDuckGo search cascade, DNS/IP checks before outbound HTTPS requests (including redirects), timeout handling, and memory REST tools with secret and query validation. Credentials use ConfigManager (`TAVILY_API_KEY`, optional `GITHUB_TOKEN`); memory endpoint reads `MEMORY_API_URL`. Memory saving tool description restricts use to explicit user requests.
 - Phase 9 validation: `bun test src/tools/` — PASS (32 tests across 8 files); `bunx tsc --noEmit` — PASS; `git diff --check` — PASS. Coverage includes missing Tavily key fallback, provider failures, private/resolved IP checks, memory secret rejection, request URL/body encoding, and existing Phase 7–8 regressions.
 - Phase 9 Git: commit `cf56ad071ca533320b4b109d3b3aab29bf8dbaee` pushed to `origin/main`; `git ls-remote` confirmed the remote ref matches.
+- Phase 10 implementation: added FakeLLM, plan/act Agent loop with plan reflection and bounded steps, tool error capture and status callbacks, plus a search-only ResearchAgent that returns validated structured briefs.
+- Phase 10 validation: `bun test src/agent/` — PASS (6 tests across 2 files); `bunx tsc --noEmit` — PASS; `git diff --check` — PASS.
+- Phase 10 Git: not committed; remote push not attempted.
