@@ -6,7 +6,7 @@
 
 | Phase | Name | Status | Evidence |
 |---|---|---|---|
-| 1 | Project Scaffolding | 🔄 In Progress | Acceptance checks pass; awaiting commit and verified GitHub push |
+| 1 | Project Scaffolding | ✅ Complete | Acceptance checks pass; commit `a6e902b00139ff85a88861a820681250c0718542` verified on `origin/main` |
 | 2 | Core Types & Interfaces | ⬜ Not Started | — |
 | 3 | Configuration Management | ⬜ Not Started | — |
 | 4 | Logging | ⬜ Not Started | — |
@@ -25,9 +25,9 @@
 |---|---|
 | ⬜ | Not Started |
 | 🔄 | In Progress |
-| ✅ | Complete — all tests pass, acceptance criteria met |
+| ✅ | Complete — phase acceptance criteria and applicable checks are verified, and the required push is confirmed |
 | ❌ | Blocked — see notes |
 
 ## Known Issues
 
-- Phase 1 acceptance is verified; the phase remains in progress until commit and GitHub push are verified. `bun test` reports no test files because this phase defines none.
+- Phase 1 is complete and pushed. `bun test` reports no test files because this scaffolding phase defines none.
