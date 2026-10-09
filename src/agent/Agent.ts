@@ -67,9 +67,6 @@ export class Agent {
         if (act.text !== null && act.text.length > 0) {
           return { response: act.text, steps: step, toolCalls, mode: AgentMode.ACT };
         }
-        if (act.text !== null && act.text.length > 0) {
-          messages.push(modelMessage(act.text));
-        }
         continue;
       }
 
