@@ -25,7 +25,7 @@ function modelMessage(text: string | null, calls: readonly FunctionCall[] = []):
     parts.push({ text });
   }
   for (const call of calls) {
-    parts.push({ functionCall: { name: call.name, args: call.args } });
+    parts.push({ functionCall: { ...(call.id === undefined ? {} : { id: call.id }), name: call.name, args: call.args } });
   }
   return { role: "model", parts };
 }
@@ -89,7 +89,14 @@ export class Agent {
           }
         }
         toolCalls.push({ name: call.name, args: structuredClone(call.args), result, timestamp: Date.now() });
-        messages.push({ role: "tool", parts: [{ functionResponse: { name: call.name, response: result } }] });
+        messages.push({
+          role: "tool",
+          parts: [{ functionResponse: {
+            ...(call.id === undefined ? {} : { toolCallId: call.id }),
+            name: call.name,
+            response: result,
+          } }],
+        });
       }
     }
 

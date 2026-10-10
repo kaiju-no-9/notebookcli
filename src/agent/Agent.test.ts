@@ -32,7 +32,7 @@ describe("Agent", (): void => {
     const tool = makeTool(async (): Promise<string> => { executions += 1; return "changed file"; });
     const provider = new FakeLLM([
       response("inspect first"),
-      response(null, [{ name: "test_tool", args: { value: "x" } }]),
+      response(null, [{ id: "call-test-1", name: "test_tool", args: { value: "x" } }]),
       response("approved"),
       response("check the result"),
       response("all done"),
@@ -44,7 +44,7 @@ describe("Agent", (): void => {
     expect(provider.calls[1]?.tools?.map((entry): string => entry.name)).toEqual(["test_tool"]);
     expect(provider.calls[3]?.messages.at(-1)).toEqual({
       role: "tool",
-      parts: [{ functionResponse: { name: "test_tool", response: "changed file" } }],
+      parts: [{ functionResponse: { toolCallId: "call-test-1", name: "test_tool", response: "changed file" } }],
     });
     expect(result).toMatchObject({ response: "all done", steps: 2 });
   });

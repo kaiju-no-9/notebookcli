@@ -1,12 +1,12 @@
 # Oden
 
-Oden is an autonomous terminal agent harness powered by Google Gemini. It is designed to research tasks, modify codebases, run commands inside a Docker sandbox, enforce safety guardrails, and retain user preferences.
+Oden is an autonomous terminal agent harness powered by OpenRouter. It is designed to research tasks, modify codebases, run commands inside a Docker sandbox, enforce safety guardrails, and retain user preferences.
 
 ## Requirements
 
 - Bun 1.1 or later (primary runtime), or Node.js 18 or later for compatible tooling.
 - Docker with Docker Compose and Buildx for building and running the command sandbox.
-- A Google Gemini API key. Set `GEMINI_API_KEY` in the environment or enter it when prompted on the first launch.
+- An OpenRouter API key. Set `OPENROUTER_API_KEY` in the environment or enter it when prompted on the first launch.
 
 ## Setup
 
@@ -22,7 +22,7 @@ Start the interactive agent with:
 bun run start
 ```
 
-Choose a different Gemini model with `bun run start -- --model <model-name>`. Type `exit` or `quit` to close the REPL.
+The default `openrouter/free` model routes requests to currently available free models and filters for request features such as tool calling and structured outputs. Choose a different OpenRouter model with `bun run start -- --model <provider/model>`. Type `exit` or `quit` to close the REPL. `OPENROUTER_MODEL` and `OPENROUTER_GUARD_MODEL` can also set default models.
 
 ## Sandbox
 

@@ -3,7 +3,7 @@ import type { GuardrailContext } from "../types/GuardrailContext.js";
 import type { GuardrailResult } from "../types/GuardrailResult.js";
 import { SecretScanner } from "../types/SecretScanner.js";
 import type { LLMProvider } from "../../providers/LLMProvider.js";
-import { GeminiConfig } from "../../providers/GeminiConfig.js";
+import { OpenRouterConfig } from "../../providers/OpenRouterConfig.js";
 import { OUTPUT_GUARDRAIL_PROMPT } from "./OutputGuardrailPrompt.js";
 
 const CLASSIFICATION_SCHEMA = z.object({
@@ -35,7 +35,7 @@ export class OutputGuardrails {
         [{ role: "user", parts: [{ text: `${OUTPUT_GUARDRAIL_PROMPT}\n\nAssistant response:\n${output}` }] }],
         undefined,
         {
-          model: GeminiConfig.GUARD_MODEL,
+          model: OpenRouterConfig.GUARD_MODEL,
           responseMimeType: "application/json",
           responseSchema: z.toJSONSchema(CLASSIFICATION_SCHEMA, { target: "draft-07" }),
         },

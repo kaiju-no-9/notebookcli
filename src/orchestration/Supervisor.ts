@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Message } from "../agent/Message.js";
 import type { LLMProvider } from "../providers/LLMProvider.js";
-import { GeminiConfig } from "../providers/GeminiConfig.js";
+import { OpenRouterConfig } from "../providers/OpenRouterConfig.js";
 import { SUPERVISOR_PROMPT } from "./SupervisorPrompt.js";
 
 export const RouteDecision = {
@@ -40,7 +40,7 @@ export class Supervisor {
         ],
         undefined,
         {
-          model: GeminiConfig.GUARD_MODEL,
+          model: OpenRouterConfig.GUARD_MODEL,
           responseMimeType: "application/json",
           responseSchema: z.toJSONSchema(CLASSIFICATION_SCHEMA, { target: "draft-07" }),
         },

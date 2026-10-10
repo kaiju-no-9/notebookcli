@@ -58,7 +58,7 @@ describe("InputGuardrails", (): void => {
     const result = await new InputGuardrails(provider, 100, noOpLogger()).check({ userMessage: "do something" });
     expect(result).toMatchObject({ allowed: false, reason: "unsafe request", stage: "llm_classifier" });
     expect(seenMessages[0]?.parts[0]).toMatchObject({ text: expect.stringContaining("do something") });
-    expect(seenModel).toBe("gemini-2.0-flash");
+    expect(seenModel).toBe("openrouter/free");
   });
 
   it("fails open when the classifier rejects or returns invalid JSON", async (): Promise<void> => {

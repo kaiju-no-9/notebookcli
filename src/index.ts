@@ -11,9 +11,8 @@ import { InputGuardrails } from "./guardrails/input/InputGuardrails.js";
 import { OutputGuardrails } from "./guardrails/output/OutputGuardrails.js";
 import { Orchestrator } from "./orchestration/Orchestrator.js";
 import { Supervisor } from "./orchestration/Supervisor.js";
-import { GeminiConfig } from "./providers/GeminiConfig.js";
-import { GeminiProvider } from "./providers/GeminiProvider.js";
-import { GeminiStreaming } from "./providers/GeminiStreaming.js";
+import { OpenRouterConfig } from "./providers/OpenRouterConfig.js";
+import { OpenRouterProvider } from "./providers/OpenRouterProvider.js";
 import { ToolRegistry } from "./tools/ToolRegistry.js";
 import { registerCodingTools } from "./tools/CodingTools.js";
 import { registerFileTools } from "./tools/FileTools.js";
@@ -31,7 +30,7 @@ export function createProgram(): Command {
   return new Command()
     .name("oden")
     .description("Autonomous terminal coding and research agent")
-    .option("--model <model>", "Gemini model for primary agent and direct responses", GeminiConfig.PRIMARY_MODEL)
+    .option("--model <model>", "OpenRouter model for agent and direct responses", OpenRouterConfig.DEFAULT_MODEL)
     .version("1.0.0");
 }
 
@@ -47,7 +46,7 @@ export function createToolRegistry(): ToolRegistry {
 }
 
 export function createApplication(apiKey: string, options: ApplicationOptions = {}): AgentCLI {
-  const model = options.model ?? GeminiConfig.PRIMARY_MODEL;
+  const model = options.model ?? OpenRouterConfig.DEFAULT_MODEL;
   const logger = {
     warn: (message: string, meta?: Record<string, unknown>): void => {
       void import("./logger/AgentLogger.js")
@@ -55,8 +54,8 @@ export function createApplication(apiKey: string, options: ApplicationOptions = 
         .catch((): void => undefined);
     },
   };
-  const provider = new GeminiProvider(undefined, model, apiKey);
-  const streaming = new GeminiStreaming(apiKey, undefined, model);
+  const provider = new OpenRouterProvider(apiKey, model);
+  const streaming = provider;
   const registry = createToolRegistry();
 
   const terminalState = new TerminalState();
@@ -84,7 +83,7 @@ export function createApplication(apiKey: string, options: ApplicationOptions = 
 }
 
 export async function startApplication(options: ApplicationOptions = {}): Promise<void> {
-  const apiKey = await ConfigManager.get("GEMINI_API_KEY");
+  const apiKey = await ConfigManager.get("OPENROUTER_API_KEY");
   const app = createApplication(apiKey, options);
   await app.start();
 }
