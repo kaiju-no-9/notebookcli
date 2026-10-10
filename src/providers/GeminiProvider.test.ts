@@ -120,6 +120,19 @@ describe("GeminiProvider", (): void => {
     expect(requestedModel).toBe("gemini-2.0-flash");
   });
 
+  it("uses a configured default model when a call has no model override", async (): Promise<void> => {
+    let requestedModel = "";
+    const model: MockModel = {
+      generateContent: async (request: unknown): Promise<unknown> => {
+        requestedModel = (request as { model: string }).model;
+        return mockResponse([{ text: "ok" }]);
+      },
+      generateContentStream: async (): Promise<AsyncGenerator<{ text?: string }>> => (async function* (): AsyncGenerator<{ text?: string }> {})(),
+    };
+    await new GeminiProvider(mockClient(model), "gemini-cli-model").generateContent([]);
+    expect(requestedModel).toBe("gemini-cli-model");
+  });
+
   it("maps tool responses to Gemini user content", async (): Promise<void> => {
     let sent: unknown;
     const model: MockModel = {
@@ -163,15 +176,20 @@ describe("GeminiProvider", (): void => {
   });
 
   it("supports the standalone GeminiStreaming API", async (): Promise<void> => {
+    let requestedModel = "";
     const model: MockModel = {
       generateContent: async (): Promise<unknown> => mockResponse([]),
-      generateContentStream: async (): Promise<AsyncGenerator<{ text?: string }>> => (async function* (): AsyncGenerator<{ text?: string }> {
+      generateContentStream: async (request: unknown): Promise<AsyncGenerator<{ text?: string }>> => {
+        requestedModel = (request as { model: string }).model;
+        return (async function* (): AsyncGenerator<{ text?: string }> {
         yield { text: "token" };
-      })(),
+        })();
+      },
     };
     const chunks: string[] = [];
-    const result = await new GeminiStreaming("test-key", mockClient(model)).stream([], (token: string): void => { chunks.push(token); });
+    const result = await new GeminiStreaming("test-key", mockClient(model), "gemini-cli-model").stream([], (token: string): void => { chunks.push(token); });
     expect(result).toBe("token");
     expect(chunks).toEqual(["token"]);
+    expect(requestedModel).toBe("gemini-cli-model");
   });
 });

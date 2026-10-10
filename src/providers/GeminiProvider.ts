@@ -59,9 +59,10 @@ export async function streamGeminiContent(
   client: Pick<GoogleGenAI, "models">,
   messages: readonly Message[],
   onToken: (token: string) => void,
+  model: string = GeminiConfig.PRIMARY_MODEL,
 ): Promise<string> {
   const stream = await client.models.generateContentStream({
-    model: GeminiConfig.PRIMARY_MODEL,
+    model,
     contents: toGeminiContents(messages),
     config: {
       maxOutputTokens: GeminiConfig.MAX_OUTPUT_TOKENS,
@@ -81,10 +82,16 @@ export async function streamGeminiContent(
 }
 
 export class GeminiProvider implements LLMProvider {
-  private readonly clientPromise: Promise<Pick<GoogleGenAI, "models">>;
+  private clientPromise: Promise<Pick<GoogleGenAI, "models">> | undefined;
 
-  public constructor(client?: Pick<GoogleGenAI, "models">) {
-    this.clientPromise = client === undefined ? this.createClient() : Promise.resolve(client);
+  public constructor(
+    client?: Pick<GoogleGenAI, "models">,
+    private readonly defaultModel: string = GeminiConfig.PRIMARY_MODEL,
+    private readonly apiKey?: string,
+  ) {
+    if (client !== undefined) {
+      this.clientPromise = Promise.resolve(client);
+    }
   }
 
   public async generateContent(
@@ -106,8 +113,8 @@ export class GeminiProvider implements LLMProvider {
         const toolConfig: Tool = { functionDeclarations: declarations };
         requestConfig.tools = [...(requestConfig.tools ?? []), toolConfig];
       }
-      const response = await (await this.clientPromise).models.generateContent({
-        model: typeof requestedModel === "string" && requestedModel.length > 0 ? requestedModel : GeminiConfig.PRIMARY_MODEL,
+      const response = await (await this.getClient()).models.generateContent({
+        model: typeof requestedModel === "string" && requestedModel.length > 0 ? requestedModel : this.defaultModel,
         contents: toGeminiContents(messages),
         config: requestConfig,
       });
@@ -135,7 +142,7 @@ export class GeminiProvider implements LLMProvider {
 
   public async streamContent(messages: Message[], onToken: (token: string) => void): Promise<string> {
     try {
-      return await streamGeminiContent(await this.clientPromise, messages, onToken);
+      return await streamGeminiContent(await this.getClient(), messages, onToken, this.defaultModel);
     } catch (error: unknown) {
       const translated = toProviderError(error);
       throw translated;
@@ -144,7 +151,12 @@ export class GeminiProvider implements LLMProvider {
 
   private async createClient(): Promise<Pick<GoogleGenAI, "models">> {
     const { ConfigManager } = await import("../config/ConfigManager.js");
-    const apiKey = await ConfigManager.get("GEMINI_API_KEY");
-    return createGeminiClient(apiKey);
+    const key = this.apiKey ?? await ConfigManager.get("GEMINI_API_KEY");
+    return createGeminiClient(key);
+  }
+
+  private getClient(): Promise<Pick<GoogleGenAI, "models">> {
+    this.clientPromise ??= this.createClient();
+    return this.clientPromise;
   }
 }

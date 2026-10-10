@@ -82,6 +82,10 @@ function getLogger(): Logger {
   return logger;
 }
 
+// Initialize Winston before the first log call so cold-start setup does not
+// block an application's request or the first guarded operation.
+getLogger();
+
 export class AgentLogger {
   public static info(message: string, meta?: LogMeta): void {
     AgentLogger.write("info", message, meta);

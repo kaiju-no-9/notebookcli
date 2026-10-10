@@ -6,7 +6,7 @@ Oden is an autonomous terminal agent harness powered by Google Gemini. It is des
 
 - Bun 1.1 or later (primary runtime), or Node.js 18 or later for compatible tooling.
 - Docker with Docker Compose and Buildx for building and running the command sandbox.
-- A Google Gemini API key for provider features (configuration is implemented in a later project phase).
+- A Google Gemini API key. Set `GEMINI_API_KEY` in the environment or enter it when prompted on the first launch.
 
 ## Setup
 
@@ -16,7 +16,13 @@ bun run typecheck
 bun test
 ```
 
-Start the application with `bun run start` after the implementation phases provide the application entry point.
+Start the interactive agent with:
+
+```sh
+bun run start
+```
+
+Choose a different Gemini model with `bun run start -- --model <model-name>`. Type `exit` or `quit` to close the REPL.
 
 ## Sandbox
 

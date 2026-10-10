@@ -1,6 +1,6 @@
 # Implementation Status
 
-> Last updated: 2026-10-09
+> Last updated: 2026-10-10
 
 ## Phase Status
 
@@ -17,7 +17,7 @@
 | 9 | Search & Memory Tools | ✅ Complete | Tools suite (32) and TypeScript check pass; commit `cf56ad071ca533320b4b109d3b3aab29bf8dbaee` verified on `origin/main` |
 | 10 | Agent Core | ✅ Complete | Agent tests (6) and TypeScript check pass; commit `2ca8a5d69ce53da887b7775981488fb729a6fce9` verified on `origin/main` |
 | 11 | Orchestration Layer | ✅ Complete | Orchestration tests (10) and TypeScript check pass; commit `bd19375ba8a6c48295ec3385b83fb592be21ae39` verified on `origin/main` |
-| 12 | CLI & Entry Point | ⬜ Not Started | — |
+| 12 | CLI & Entry Point | 🔄 In Progress | Implementation and full integration test are complete. `bun test` passes (110 tests); TypeScript, CLI quit smoke, and `git diff --check` pass. Push remains pending. |
 
 ## Status Legend
 
@@ -58,3 +58,6 @@
 - Phase 11 implementation: added structured Supervisor classification with GUARD_MODEL and CODE_ONLY fallback; added Orchestrator input/output guard stages, DIRECT/CODE_ONLY/RESEARCH_AND_CODE routing, research fallback, output filtering, buffered direct-stream tokens, callbacks, and per-instance conversation history.
 - Phase 11 validation: `bun test src/orchestration/` — PASS (10 tests across 2 files); `bunx tsc --noEmit` — PASS; `git diff --check` — PASS.
 - Phase 11 Git: commit `bd19375ba8a6c48295ec3385b83fb592be21ae39` pushed to `origin/main`; `git ls-remote` confirmed the remote ref matches.
+- Phase 12 implementation: added the interactive CLI loop, output renderer, spinner state stub, entry point wiring for all eight tools and application layers, `--model` selection, and setup guidance in README. The logger now initializes eagerly to address its known first-use stall.
+- Phase 12 validation: focused CLI, entry point, and Gemini provider tests pass (17 tests); a CLI-to-Orchestrator integration test verifies input guardrails → classification → streaming → output guardrails → terminal rendering. `bun test` passes all 110 tests across 23 files (244 assertions). The installed TypeScript compiler succeeds with `--noEmit`, and `git diff --check` passes. A CLI smoke run using a dummy key accepted `quit`, printed goodbye, and exited 0; lazy Gemini client construction prevents SDK startup when no model request is made. `GEMINI_API_KEY` is not configured, so live Gemini API interaction was not exercised. Git status identifies only expected Phase 12 implementation and progress changes; commit/push verification is still pending.
+- Resume check (2026-10-10): branch `main` tracks `origin/main` at Phase 11; remote URL is `https://github.com/kaiju-no-9/notebookcli.git`. Earlier stalls were slow dependency loading and cleared after the initial logger run. No Phase 12 push has yet been made.
