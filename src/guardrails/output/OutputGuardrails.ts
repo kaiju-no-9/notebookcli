@@ -20,6 +20,7 @@ export class OutputGuardrails {
   public constructor(
     private readonly provider: LLMProvider,
     private readonly logger?: OutputGuardrailLogger,
+    private readonly model: string = OpenRouterConfig.GUARD_MODEL,
   ) {}
 
   public check(context: GuardrailContext): Promise<GuardrailResult>;
@@ -35,7 +36,7 @@ export class OutputGuardrails {
         [{ role: "user", parts: [{ text: `${OUTPUT_GUARDRAIL_PROMPT}\n\nAssistant response:\n${output}` }] }],
         undefined,
         {
-          model: OpenRouterConfig.GUARD_MODEL,
+          model: this.model,
           responseMimeType: "application/json",
           responseSchema: z.toJSONSchema(CLASSIFICATION_SCHEMA, { target: "draft-07" }),
         },

@@ -22,6 +22,7 @@ export class InputGuardrails {
     private readonly provider: LLMProvider,
     private readonly maxInputLength: number = 10_000,
     private readonly logger?: GuardrailLogger,
+    private readonly model: string = OpenRouterConfig.GUARD_MODEL,
   ) {}
 
   public async check(context: GuardrailContext): Promise<GuardrailResult> {
@@ -41,7 +42,7 @@ export class InputGuardrails {
         [{ role: "user", parts: [{ text: `${INPUT_GUARDRAIL_PROMPT}\n\nUser request:\n${input}` }] }],
         undefined,
         {
-          model: OpenRouterConfig.GUARD_MODEL,
+          model: this.model,
           responseMimeType: "application/json",
           responseSchema: z.toJSONSchema(CLASSIFICATION_SCHEMA, { target: "draft-07" }),
         },

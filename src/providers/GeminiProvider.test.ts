@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { Message } from "../agent/Message.js";
 import type { ToolDefinition } from "../tools/ToolRegistry.js";
 import { ErrorKind } from "../utils/ErrorTranslator.js";
-import { GeminiProvider, zodToJsonSchema } from "./GeminiProvider.js";
+import { GeminiProvider, toGeminiContents, zodToJsonSchema } from "./GeminiProvider.js";
 import { GeminiStreaming } from "./GeminiStreaming.js";
 
 interface MockModel {
@@ -74,11 +74,14 @@ describe("GeminiProvider", (): void => {
     };
 
     const response = await provider.generateContent(messages, [tool]);
-    const request = requests[0] as { contents: Array<{ role: string; parts: Array<{ text?: string }> }>; config: { tools: Array<{ functionDeclarations: Array<{ name: string; parametersJsonSchema: Record<string, unknown> }> }> } };
+    const request = requests[0] as { contents: Array<{ role: string; parts: Array<{ text?: string }> }>; config: { maxOutputTokens: number; temperature?: number; topP?: number; tools: Array<{ functionDeclarations: Array<{ name: string; parametersJsonSchema: Record<string, unknown> }> }> } };
     expect(request.contents[0]?.role).toBe("user");
     expect(request.contents[0]?.parts[0]?.text).toBe("inspect");
     expect(request.config.tools[0]?.functionDeclarations[0]?.name).toBe("inspect");
     expect(request.config.tools[0]?.functionDeclarations[0]?.parametersJsonSchema.type).toBe("object");
+    expect(request.config.maxOutputTokens).toBe(8192);
+    expect(request.config.temperature).toBeUndefined();
+    expect(request.config.topP).toBeUndefined();
     expect(response.text).toBe("ready");
     expect(messages).toEqual([{ role: "user", parts: [{ text: "inspect" }] }]);
   });
@@ -86,13 +89,13 @@ describe("GeminiProvider", (): void => {
   it("parses function call response parts and usage", async (): Promise<void> => {
     const model: MockModel = {
       generateContent: async (): Promise<unknown> => mockResponse(
-        [{ functionCall: { name: "read_file", args: { path: "README.md" } } }],
+        [{ functionCall: { id: "call-123", name: "read_file", args: { path: "README.md" } }, thoughtSignature: "signature-123" }],
         { promptTokenCount: 8, candidatesTokenCount: 3, totalTokenCount: 11 },
       ),
       generateContentStream: async (): Promise<AsyncGenerator<{ text?: string }>> => (async function* (): AsyncGenerator<{ text?: string }> {})(),
     };
     const response = await new GeminiProvider(mockClient(model)).generateContent([]);
-    expect(response.functionCalls).toEqual([{ name: "read_file", args: { path: "README.md" } }]);
+    expect(response.functionCalls).toEqual([{ id: "call-123", name: "read_file", args: { path: "README.md" }, thoughtSignature: "signature-123" }]);
     expect(response.text).toBeNull();
     expect(response.usage).toEqual({ promptTokens: 8, completionTokens: 3, totalTokens: 11 });
   });
@@ -116,8 +119,8 @@ describe("GeminiProvider", (): void => {
       },
       generateContentStream: async (): Promise<AsyncGenerator<{ text?: string }>> => (async function* (): AsyncGenerator<{ text?: string }> {})(),
     };
-    await new GeminiProvider(mockClient(model)).generateContent([], undefined, { model: "gemini-2.0-flash" });
-    expect(requestedModel).toBe("gemini-2.0-flash");
+    await new GeminiProvider(mockClient(model)).generateContent([], undefined, { model: "gemini-3.5-flash-lite" });
+    expect(requestedModel).toBe("gemini-3.5-flash-lite");
   });
 
   it("uses a configured default model when a call has no model override", async (): Promise<void> => {
@@ -142,11 +145,38 @@ describe("GeminiProvider", (): void => {
       },
       generateContentStream: async (): Promise<AsyncGenerator<{ text?: string }>> => (async function* (): AsyncGenerator<{ text?: string }> {})(),
     };
-    const messages: Message[] = [{ role: "tool", parts: [{ functionResponse: { name: "inspect", response: "done" } }] }];
+    const messages: Message[] = [{ role: "tool", parts: [{ functionResponse: { toolCallId: "call-123", name: "inspect", response: "done" } }] }];
     await new GeminiProvider(mockClient(model)).generateContent(messages);
-    const request = sent as { contents: Array<{ role: string; parts: Array<{ functionResponse?: { response: Record<string, unknown> } }> }> };
+    const request = sent as { contents: Array<{ role: string; parts: Array<{ functionResponse?: { id?: string; response: Record<string, unknown> } }> }> };
     expect(request.contents[0]?.role).toBe("user");
+    expect(request.contents[0]?.parts[0]?.functionResponse?.id).toBe("call-123");
     expect(request.contents[0]?.parts[0]?.functionResponse?.response).toEqual({ result: "done" });
+  });
+
+  it("preserves Gemini function-call signatures and continues model-ending histories with a user turn", (): void => {
+    const contents = toGeminiContents([{
+      role: "model",
+      parts: [{ functionCall: {
+        id: "call-123",
+        name: "inspect",
+        args: { path: "README.md" },
+        thoughtSignature: "signature-123",
+      } }],
+    }]);
+
+    expect(contents).toEqual([
+      {
+        role: "model",
+        parts: [{
+          functionCall: { id: "call-123", name: "inspect", args: { path: "README.md" } },
+          thoughtSignature: "signature-123",
+        }],
+      },
+      {
+        role: "user",
+        parts: [{ text: "Continue from the model response above and proceed with the pending task. Use tools as needed, then provide a concise final response." }],
+      },
+    ]);
   });
 
   it("translates Gemini authentication and rate limit errors", async (): Promise<void> => {

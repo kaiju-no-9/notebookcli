@@ -26,18 +26,36 @@ export async function createGeminiClient(apiKey: string): Promise<GoogleGenAI> {
 }
 
 export function toGeminiContents(messages: readonly Message[]): Array<{ role: string; parts: Part[] }> {
-  return messages.map((message: Message): { role: string; parts: Part[] } => ({
+  const contents = messages.map((message: Message): { role: string; parts: Part[] } => ({
     role: message.role === "tool" ? "user" : message.role,
     parts: message.parts.map((part: OdenPart): Part => {
       if ("text" in part) {
         return { text: part.text };
       }
       if ("functionCall" in part) {
-        return { functionCall: { name: part.functionCall.name, args: part.functionCall.args } };
+        return {
+          functionCall: {
+            ...(part.functionCall.id === undefined ? {} : { id: part.functionCall.id }),
+            name: part.functionCall.name,
+            args: part.functionCall.args,
+          },
+          ...(part.functionCall.thoughtSignature === undefined ? {} : { thoughtSignature: part.functionCall.thoughtSignature }),
+        };
       }
-      return { functionResponse: { name: part.functionResponse.name, response: { result: part.functionResponse.response } } };
+      return { functionResponse: {
+        ...(part.functionResponse.toolCallId === undefined ? {} : { id: part.functionResponse.toolCallId }),
+        name: part.functionResponse.name,
+        response: { result: part.functionResponse.response },
+      } };
     }),
   }));
+  if (contents.at(-1)?.role === "model") {
+    contents.push({
+      role: "user",
+      parts: [{ text: "Continue from the model response above and proceed with the pending task. Use tools as needed, then provide a concise final response." }],
+    });
+  }
+  return contents;
 }
 
 function toFunctionDeclarations(tools: readonly ToolDefinition[]): FunctionDeclaration[] {
@@ -50,9 +68,20 @@ function toFunctionDeclarations(tools: readonly ToolDefinition[]): FunctionDecla
 
 export function toProviderError(error: unknown): Error & { kind: ErrorKind } {
   const info = ErrorTranslator.translate(error);
-  const translated = new Error(info.message, { cause: error }) as Error & { kind: ErrorKind };
+  const details = redactProviderError(info.originalMessage).slice(0, 600);
+  const message = details.length > 0 && details !== "Unknown error"
+    ? `${info.message} Gemini API details: ${details}`
+    : info.message;
+  const translated = new Error(message, { cause: error }) as Error & { kind: ErrorKind };
   translated.kind = info.kind;
   return translated;
+}
+
+function redactProviderError(message: string): string {
+  return message
+    .replace(/AIza[0-9A-Za-z_-]{30,}/g, "[REDACTED_API_KEY]")
+    .replace(/(authorization\s*[:=]\s*bearer\s+)[^\s,;]+/gi, "$1[REDACTED]")
+    .replace(/([?&](?:key|api_key|access_token)=)[^&\s]+/gi, "$1[REDACTED]");
 }
 
 export async function streamGeminiContent(
@@ -66,8 +95,6 @@ export async function streamGeminiContent(
     contents: toGeminiContents(messages),
     config: {
       maxOutputTokens: GeminiConfig.MAX_OUTPUT_TOKENS,
-      temperature: GeminiConfig.TEMPERATURE,
-      topP: GeminiConfig.TOP_P,
     },
   });
   let accumulated = "";
@@ -104,8 +131,6 @@ export class GeminiProvider implements LLMProvider {
       const { model: _model, ...generationOptions } = config ?? {};
       const requestConfig: GenerateContentConfig = {
         maxOutputTokens: GeminiConfig.MAX_OUTPUT_TOKENS,
-        temperature: GeminiConfig.TEMPERATURE,
-        topP: GeminiConfig.TOP_P,
         ...(generationOptions as GenerateContentConfig),
       };
       if (tools !== undefined && tools.length > 0) {
@@ -120,9 +145,14 @@ export class GeminiProvider implements LLMProvider {
       });
       const parts = response.candidates?.[0]?.content?.parts ?? [];
       const textParts = parts.flatMap((part: Part): string[] => part.text === undefined ? [] : [part.text]);
-      const functionCalls = parts.flatMap((part: Part): Array<{ name: string; args: Record<string, unknown> }> => {
+      const functionCalls = parts.flatMap((part: Part): Array<{ id?: string; name: string; args: Record<string, unknown>; thoughtSignature?: string }> => {
         const call = part.functionCall;
-        return call?.name === undefined ? [] : [{ name: call.name, args: call.args ?? {} }];
+        return call?.name === undefined ? [] : [{
+          ...(call.id === undefined ? {} : { id: call.id }),
+          name: call.name,
+          args: call.args ?? {},
+          ...(part.thoughtSignature === undefined ? {} : { thoughtSignature: part.thoughtSignature }),
+        }];
       });
       const usage = response.usageMetadata;
       return {

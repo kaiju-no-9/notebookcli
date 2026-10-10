@@ -2,6 +2,7 @@ export interface FunctionCall {
   id?: string;
   name: string;
   args: Record<string, unknown>;
+  thoughtSignature?: string;
 }
 
 export interface LLMResponse {

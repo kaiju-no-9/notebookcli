@@ -5,6 +5,7 @@ dist/
 *.map
 .env
 .env.*
+!.env.example
 *.enc
 .oden/
 .DS_Store

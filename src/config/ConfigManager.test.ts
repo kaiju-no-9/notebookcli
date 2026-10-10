@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { stdin, stdout } from "node:process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ConfigManager } from "./ConfigManager.js";
@@ -75,7 +76,16 @@ describe("ConfigManager", (): void => {
   });
 
   it("does not prompt for a missing key in non-interactive sessions", async (): Promise<void> => {
-    expect(await ConfigManager.has("ODEN_TEST_MISSING")).toBe(false);
-    await expect(ConfigManager.get("ODEN_TEST_MISSING")).rejects.toThrow("non-interactive session");
+    const originalStdinIsTTY = stdin.isTTY;
+    const originalStdoutIsTTY = stdout.isTTY;
+    Object.defineProperty(stdin, "isTTY", { configurable: true, value: false });
+    Object.defineProperty(stdout, "isTTY", { configurable: true, value: false });
+    try {
+      expect(await ConfigManager.has("ODEN_TEST_MISSING")).toBe(false);
+      await expect(ConfigManager.get("ODEN_TEST_MISSING")).rejects.toThrow("non-interactive session");
+    } finally {
+      Object.defineProperty(stdin, "isTTY", { configurable: true, value: originalStdinIsTTY });
+      Object.defineProperty(stdout, "isTTY", { configurable: true, value: originalStdoutIsTTY });
+    }
   });
 });

@@ -28,7 +28,11 @@ const CLASSIFICATION_SCHEMA = z.object({
 });
 
 export class Supervisor {
-  public constructor(private readonly provider: LLMProvider, private readonly logger?: SupervisorLogger) {}
+  public constructor(
+    private readonly provider: LLMProvider,
+    private readonly logger?: SupervisorLogger,
+    private readonly model: string = OpenRouterConfig.GUARD_MODEL,
+  ) {}
 
   public async classify(input: string, history: Message[] = []): Promise<ClassificationResult> {
     try {
@@ -40,7 +44,7 @@ export class Supervisor {
         ],
         undefined,
         {
-          model: OpenRouterConfig.GUARD_MODEL,
+          model: this.model,
           responseMimeType: "application/json",
           responseSchema: z.toJSONSchema(CLASSIFICATION_SCHEMA, { target: "draft-07" }),
         },

@@ -1,12 +1,12 @@
 # Oden
 
-Oden is an autonomous terminal agent harness powered by OpenRouter. It is designed to research tasks, modify codebases, run commands inside a Docker sandbox, enforce safety guardrails, and retain user preferences.
+Oden is an autonomous terminal agent harness that uses OpenRouter by default and can also use Google Gemini. It is designed to research tasks, modify codebases, run commands inside a Docker sandbox, enforce safety guardrails, and retain user preferences.
 
 ## Requirements
 
 - Bun 1.1 or later (primary runtime), or Node.js 18 or later for compatible tooling.
 - Docker with Docker Compose and Buildx for building and running the command sandbox.
-- An OpenRouter API key. Set `OPENROUTER_API_KEY` in the environment or enter it when prompted on the first launch.
+- An OpenRouter API key and/or a Google Gemini API key. Set `OPENROUTER_API_KEY` and/or `GEMINI_API_KEY` in the environment or enter the selected provider's key when prompted.
 
 ## Setup
 
@@ -16,13 +16,21 @@ bun run typecheck
 bun test
 ```
 
-Start the interactive agent with:
+For local credentials, copy `.env.example` to `.env` if needed, then set one or both API keys. Bun loads `.env` automatically; `.env` is ignored by Git. Keep keys private.
 
-```sh
-bun run start
-```
+## Manual test
 
-The default `openrouter/free` model routes requests to currently available free models and filters for request features such as tool calling and structured outputs. Choose a different OpenRouter model with `bun run start -- --model <provider/model>`. Type `exit` or `quit` to close the REPL. `OPENROUTER_MODEL` and `OPENROUTER_GUARD_MODEL` can also set default models.
+1. Install dependencies with `bun install`.
+2. In `.env`, set `OPENROUTER_API_KEY` and/or `GEMINI_API_KEY` to the keys you want to test.
+3. Start Oden with `bun run start`.
+4. At the prompt, ask a simple question such as `What is 2 + 2?`. This sends a live request to the selected provider.
+5. Type `quit` to exit.
+
+OpenRouter is the default. To test Gemini, run `bun run start -- --provider gemini`; to use OpenRouter, run `bun run start -- --provider openrouter`. You can also set `ODEN_PROVIDER=gemini` or `ODEN_PROVIDER=openrouter` in `.env`. Use `--model <model-name>` to override the selected provider's primary model.
+
+To manually check code tools, start Oden in a disposable Git project, then ask it to create a small file and verify the file yourself. The command tool uses the Docker sandbox, so build it once with `docker compose build sandbox` and make sure Docker is running. Review any requested actions before allowing commands that modify files.
+
+OpenRouter defaults to `openrouter/free`, which routes requests to currently available free models and filters for request features such as tool calling and structured outputs. Gemini defaults to `gemini-3.8-flash` with `gemini-3.5-flash-lite` for guard checks. Model environment settings are `OPENROUTER_MODEL`, `OPENROUTER_GUARD_MODEL`, `GEMINI_MODEL`, and `GEMINI_GUARD_MODEL`. Type `exit` or `quit` to close the REPL.
 
 ## Sandbox
 

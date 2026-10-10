@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import { Agent } from "./agent/Agent.js";
 import { ResearchAgent } from "./agent/ResearchAgent.js";
 import { AgentCLI } from "./cli/AgentCLI.js";
@@ -11,6 +11,9 @@ import { InputGuardrails } from "./guardrails/input/InputGuardrails.js";
 import { OutputGuardrails } from "./guardrails/output/OutputGuardrails.js";
 import { Orchestrator } from "./orchestration/Orchestrator.js";
 import { Supervisor } from "./orchestration/Supervisor.js";
+import { GeminiConfig } from "./providers/GeminiConfig.js";
+import { GeminiProvider } from "./providers/GeminiProvider.js";
+import { GeminiStreaming } from "./providers/GeminiStreaming.js";
 import { OpenRouterConfig } from "./providers/OpenRouterConfig.js";
 import { OpenRouterProvider } from "./providers/OpenRouterProvider.js";
 import { ToolRegistry } from "./tools/ToolRegistry.js";
@@ -23,14 +26,24 @@ import { registerSearchTools } from "./tools/SearchTool.js";
 import { ErrorTranslator } from "./utils/ErrorTranslator.js";
 
 export interface ApplicationOptions {
+  readonly provider?: "openrouter" | "gemini";
   readonly model?: string;
+}
+
+function providerDefaults(provider: "openrouter" | "gemini"): { model: string; guardModel: string } {
+  return provider === "gemini"
+    ? { model: GeminiConfig.PRIMARY_MODEL, guardModel: GeminiConfig.GUARD_MODEL }
+    : { model: OpenRouterConfig.DEFAULT_MODEL, guardModel: OpenRouterConfig.GUARD_MODEL };
 }
 
 export function createProgram(): Command {
   return new Command()
     .name("oden")
     .description("Autonomous terminal coding and research agent")
-    .option("--model <model>", "OpenRouter model for agent and direct responses", OpenRouterConfig.DEFAULT_MODEL)
+    .addOption(new Option("--provider <provider>", "LLM provider to use (openrouter or gemini)")
+      .choices(["openrouter", "gemini"])
+      .default(process.env.ODEN_PROVIDER ?? "openrouter"))
+    .option("--model <model>", "Override the selected provider's default model")
     .version("1.0.0");
 }
 
@@ -46,7 +59,9 @@ export function createToolRegistry(): ToolRegistry {
 }
 
 export function createApplication(apiKey: string, options: ApplicationOptions = {}): AgentCLI {
-  const model = options.model ?? OpenRouterConfig.DEFAULT_MODEL;
+  const providerType = options.provider ?? "openrouter";
+  const defaults = providerDefaults(providerType);
+  const model = options.model ?? defaults.model;
   const logger = {
     warn: (message: string, meta?: Record<string, unknown>): void => {
       void import("./logger/AgentLogger.js")
@@ -54,8 +69,12 @@ export function createApplication(apiKey: string, options: ApplicationOptions = 
         .catch((): void => undefined);
     },
   };
-  const provider = new OpenRouterProvider(apiKey, model);
-  const streaming = provider;
+  const provider = providerType === "gemini"
+    ? new GeminiProvider(undefined, model, apiKey)
+    : new OpenRouterProvider(apiKey, model);
+  const streaming = providerType === "gemini"
+    ? new GeminiStreaming(apiKey, undefined, model)
+    : provider as OpenRouterProvider;
   const registry = createToolRegistry();
 
   const terminalState = new TerminalState();
@@ -66,9 +85,9 @@ export function createApplication(apiKey: string, options: ApplicationOptions = 
     throw new Error("Search tool registration failed");
   }
   const researchAgent = new ResearchAgent(provider, searchTool);
-  const inputGuardrails = new InputGuardrails(provider, undefined, logger);
-  const outputGuardrails = new OutputGuardrails(provider, logger);
-  const supervisor = new Supervisor(provider, logger);
+  const inputGuardrails = new InputGuardrails(provider, undefined, logger, defaults.guardModel);
+  const outputGuardrails = new OutputGuardrails(provider, logger, defaults.guardModel);
+  const supervisor = new Supervisor(provider, logger, defaults.guardModel);
   const orchestrator = new Orchestrator(
     provider,
     streaming,
@@ -83,7 +102,8 @@ export function createApplication(apiKey: string, options: ApplicationOptions = 
 }
 
 export async function startApplication(options: ApplicationOptions = {}): Promise<void> {
-  const apiKey = await ConfigManager.get("OPENROUTER_API_KEY");
+  const credentialName = options.provider === "gemini" ? "GEMINI_API_KEY" : "OPENROUTER_API_KEY";
+  const apiKey = await ConfigManager.get(credentialName);
   const app = createApplication(apiKey, options);
   await app.start();
 }
@@ -91,9 +111,9 @@ export async function startApplication(options: ApplicationOptions = {}): Promis
 export async function main(argv: string[] = process.argv): Promise<void> {
   const program = createProgram();
   await program.parseAsync(argv);
-  const options = program.opts<{ model: string }>();
+  const options = program.opts<{ provider: "openrouter" | "gemini"; model?: string }>();
   try {
-    await startApplication({ model: options.model });
+    await startApplication(options);
   } catch (error: unknown) {
     const translated = ErrorTranslator.translate(error);
     try {

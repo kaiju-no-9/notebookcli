@@ -25,7 +25,12 @@ function modelMessage(text: string | null, calls: readonly FunctionCall[] = []):
     parts.push({ text });
   }
   for (const call of calls) {
-    parts.push({ functionCall: { ...(call.id === undefined ? {} : { id: call.id }), name: call.name, args: call.args } });
+    parts.push({ functionCall: {
+      ...(call.id === undefined ? {} : { id: call.id }),
+      name: call.name,
+      args: call.args,
+      ...(call.thoughtSignature === undefined ? {} : { thoughtSignature: call.thoughtSignature }),
+    } });
   }
   return { role: "model", parts };
 }

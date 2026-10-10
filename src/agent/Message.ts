@@ -1,6 +1,6 @@
 export type Part =
   | { text: string }
-  | { functionCall: { id?: string; name: string; args: Record<string, unknown> } }
+  | { functionCall: { id?: string; name: string; args: Record<string, unknown>; thoughtSignature?: string } }
   | { functionResponse: { toolCallId?: string; name: string; response: string } };
 
 export interface Message {
