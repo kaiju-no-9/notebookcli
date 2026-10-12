@@ -42,10 +42,13 @@ Oden shows the active provider and model in the REPL prompt. Use these slash com
 | `/web` | Save a Tavily API key for higher quality web search. Leave it blank to keep using fallback search. |
 | `/memory` | Connect Supermemory by entering its API key in a hidden prompt. |
 | `/delete` | Choose and delete a saved Gemini, OpenRouter, Supermemory, or Tavily API key. |
+| `/sessions` | Create, switch, or permanently delete project-scoped conversation sessions. |
 | `/status` | Show the active provider, model, and configured services. API keys are masked. |
 | `/help` | List available commands. |
 
-Provider, model, and service settings are saved through Oden's `ConfigManager` (OS keychain when available, otherwise an encrypted file under `~/.oden`). `/provider` accepts Gemini keys in both `AIza…` and `AQ.…` formats. Existing environment variables and `.env` settings continue to work; command-line `--provider` and `--model` options take precedence at startup. If no provider and API key are configured, Oden starts in setup mode and accepts `/provider`, `/status`, and `/help` until a provider is set.
+Provider, model, and service settings are saved through Oden's `ConfigManager` (OS keychain when available, otherwise an encrypted file under `~/.oden`). `/provider` accepts Gemini keys in both `AIza…` and `AQ.…` formats. Existing environment variables and `.env` settings continue to work; command-line `--provider` and `--model` options take precedence at startup. If no provider and API key are configured, Oden starts in setup mode and accepts `/provider`, `/status`, `/help`, and `/sessions` until a provider is set.
+
+Sessions keep separate conversation histories for each project directory and automatically resume the active session on restart. Run `/sessions` to create, switch, or delete sessions. Deleting a session removes its saved history; deleting the active session switches to the most recently used remaining session, or creates a fresh empty session. Session files are stored under `~/.oden/sessions/` with owner-only permissions. Recognized secrets are redacted, but conversation text is otherwise plaintext on disk. Sessions share the same project files; they do not create separate Git worktrees.
 
 To connect Supermemory, run `/memory` and enter your API key at the hidden prompt. Oden uses `https://api.supermemory.ai/v3`, stores the key through `ConfigManager`, and sends it as a Bearer token. You can also set `MEMORY_API_URL=https://api.supermemory.ai/v3` and `SUPERMEMORY_API_KEY` in `.env`.
 

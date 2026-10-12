@@ -96,6 +96,36 @@ describe("Orchestrator", (): void => {
     expect(orchestrator.getHistory()).toHaveLength(4);
   });
 
+  it("restores initial session history and persists each completed turn", async (): Promise<void> => {
+    const persisted: Message[][] = [];
+    const initial: Message[] = [{ role: "user", parts: [{ text: "Earlier task" }] }];
+    const orchestrator = new Orchestrator(
+      emptyProvider(), { stream: async (): Promise<string> => "hello" },
+      { run: async (): Promise<AgentResult> => agentResult("done") },
+      { run: async (): Promise<ResearchBrief> => ({ summary: "", keyFindings: [], sources: [] }) },
+      guard(true), guard(true), supervisor(RouteDecision.DIRECT), undefined, undefined,
+      initial, async (history): Promise<void> => { persisted.push([...history]); },
+    );
+
+    expect(orchestrator.getHistory()).toEqual(initial);
+    expect(await orchestrator.process("new task")).toBe("hello");
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0]).toHaveLength(3);
+  });
+
+  it("replaces the active conversation history when switching sessions", async (): Promise<void> => {
+    const orchestrator = new Orchestrator(
+      emptyProvider(), { stream: async (): Promise<string> => "" }, { run: async (): Promise<AgentResult> => agentResult("") },
+      { run: async (): Promise<ResearchBrief> => ({ summary: "", keyFindings: [], sources: [] }) },
+      guard(true), guard(true), supervisor(RouteDecision.DIRECT),
+    );
+    const replacement: Message[] = [{ role: "user", parts: [{ text: "Another task" }] }];
+
+    orchestrator.setHistory(replacement);
+
+    expect(orchestrator.getHistory()).toEqual(replacement);
+  });
+
   it("routes explicit memory requests through the tool-enabled Agent path", async (): Promise<void> => {
     let agentInput = "";
     let streamCalls = 0;

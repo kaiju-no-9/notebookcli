@@ -24,6 +24,9 @@ import { MemoryCommand } from "./cli/commands/MemoryCommand.js";
 import { ProviderCommand, type ProviderCommandConfig } from "./cli/commands/ProviderCommand.js";
 import { StatusCommand } from "./cli/commands/StatusCommand.js";
 import { WebCommand } from "./cli/commands/WebCommand.js";
+import { SessionCommand } from "./cli/commands/SessionCommand.js";
+import { SessionStore, type CodingSession } from "./sessions/SessionStore.js";
+import type { Message } from "./agent/Message.js";
 import { ToolRegistry } from "./tools/ToolRegistry.js";
 import { registerCodingTools } from "./tools/CodingTools.js";
 import { registerFileTools } from "./tools/FileTools.js";
@@ -47,6 +50,11 @@ export interface ApplicationConfigStore {
   has(key: string): Promise<boolean>;
   get(key: string): Promise<string>;
   getStored(key: string): Promise<string | undefined>;
+}
+
+export interface ApplicationSessionRuntime {
+  readonly store: SessionStore;
+  activeSession: CodingSession;
 }
 
 function providerDefaults(provider: "openrouter" | "gemini"): { model: string; guardModel: string } {
@@ -107,18 +115,30 @@ export async function resolveApplicationConfig(
   return { provider, model, apiKey, providerConfigured: provider !== undefined && apiKey !== undefined && apiKey.length > 0 };
 }
 
-function createSlashCommandRouter(config: ProviderCommandConfig): SlashCommandRouter {
+function createSlashCommandRouter(
+  config: ProviderCommandConfig,
+  sessionRuntime: ApplicationSessionRuntime | undefined,
+  getHistory: () => Message[],
+  activateSession: (session: CodingSession) => void,
+): SlashCommandRouter {
   const router = new SlashCommandRouter();
   router.register(new ProviderCommand(config));
   router.register(new WebCommand());
   router.register(new MemoryCommand());
   router.register(new DeleteCommand());
+  if (sessionRuntime !== undefined) {
+    router.register(new SessionCommand(sessionRuntime.store, activateSession, undefined, getHistory));
+  }
   router.register(new StatusCommand(config));
   router.register(new HelpCommand((): Array<{ name: string; description: string }> => router.getCommandList()));
   return router;
 }
 
-export function createApplication(apiKey: string | undefined, options: ResolvedApplicationConfig): AgentCLI {
+export function createApplication(
+  apiKey: string | undefined,
+  options: ResolvedApplicationConfig,
+  sessionRuntime?: ApplicationSessionRuntime,
+): AgentCLI {
   const providerType = options.provider;
   const defaults = providerType === undefined ? undefined : providerDefaults(providerType);
   const model = options.model ?? (providerType === undefined ? undefined : defaults?.model);
@@ -130,7 +150,7 @@ export function createApplication(apiKey: string | undefined, options: ResolvedA
     },
   };
   const terminalState = new TerminalState();
-  let orchestrator: Pick<Orchestrator, "process">;
+  let orchestrator: Pick<Orchestrator, "process"> & Partial<Pick<Orchestrator, "getHistory" | "setHistory">>;
   if (!options.providerConfigured || providerType === undefined || apiKey === undefined || defaults === undefined || model === undefined) {
     orchestrator = { process: async (): Promise<string> => "No provider configured. Run /provider to set up your LLM provider." };
   } else {
@@ -170,17 +190,47 @@ export function createApplication(apiKey: string | undefined, options: ResolvedA
       supervisor,
       callbacks,
       directMemoryTools,
+      sessionRuntime?.activeSession.history ?? [],
+      sessionRuntime === undefined
+        ? undefined
+        : async (history: readonly Message[]): Promise<void> => {
+          sessionRuntime.activeSession = await sessionRuntime.store.updateActiveHistory(history);
+        },
     );
   }
-  const config = { provider: providerType, model, providerConfigured: options.providerConfigured };
-  return new AgentCLI(orchestrator, new AgentUI(), terminalState, undefined, createSlashCommandRouter(config), config);
+  const config = {
+    provider: providerType,
+    model,
+    providerConfigured: options.providerConfigured,
+    ...(sessionRuntime === undefined ? {} : { sessionTitle: (): string => sessionRuntime.activeSession.title }),
+  };
+  const getHistory = (): Message[] => orchestrator.getHistory?.() ?? sessionRuntime?.activeSession.history ?? [];
+  const activateSession = (session: CodingSession): void => {
+    if (sessionRuntime !== undefined) {
+      sessionRuntime.activeSession = session;
+    }
+    orchestrator.setHistory?.(session.history);
+  };
+  return new AgentCLI(
+    orchestrator,
+    new AgentUI(),
+    terminalState,
+    undefined,
+    createSlashCommandRouter(config, sessionRuntime, getHistory, activateSession),
+    config,
+  );
 }
 
 export async function startApplication(options: ApplicationOptions = {}): Promise<void> {
   let startupOptions = options;
+  const sessionStore = new SessionStore(process.cwd());
+  const sessionRuntime: ApplicationSessionRuntime = {
+    store: sessionStore,
+    activeSession: await sessionStore.initialize(),
+  };
   while (true) {
     const config = await resolveApplicationConfig(startupOptions);
-    const app = createApplication(config.apiKey, config);
+    const app = createApplication(config.apiKey, config, sessionRuntime);
     if (await app.start() !== "restart") {
       return;
     }

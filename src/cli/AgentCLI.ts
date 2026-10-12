@@ -19,6 +19,7 @@ export interface CLIConfig {
   readonly provider?: ProviderType;
   readonly model?: string;
   readonly providerConfigured: boolean;
+  readonly sessionTitle?: () => string;
 }
 
 function defaultReader(): PromptReader {
@@ -68,8 +69,8 @@ export class AgentCLI {
             ? model.slice("openrouter/".length)
             : model;
           const prompt = this.config.providerConfigured && this.config.provider !== undefined
-            ? `oden [${this.config.provider}/${displayModel}]> `
-            : "oden [no provider]> ";
+            ? `oden [${this.config.provider}/${displayModel}${this.sessionPromptLabel()}]> `
+            : `oden [no provider${this.sessionPromptLabel()}]> `;
           input = await reader.question(prompt);
         } catch {
           break;
@@ -83,7 +84,7 @@ export class AgentCLI {
         }
         if (this.slashCommands?.isSlashCommand(input) === true) {
           const commandName = input.trim().split(/\s+/, 1)[0]?.slice(1).toLowerCase() ?? "";
-          if (!this.config.providerConfigured && !["provider", "status", "help"].includes(commandName)) {
+          if (!this.config.providerConfigured && !["provider", "status", "help", "sessions"].includes(commandName)) {
             this.ui.render("No provider configured. Run /provider to set up your LLM provider.");
             continue;
           }
@@ -131,5 +132,10 @@ export class AgentCLI {
     }
     this.ui.render("Goodbye.");
     return "exit";
+  }
+
+  private sessionPromptLabel(): string {
+    const title = this.config.sessionTitle?.().trim();
+    return title === undefined || title.length === 0 ? "" : ` | ${title}`;
   }
 }
