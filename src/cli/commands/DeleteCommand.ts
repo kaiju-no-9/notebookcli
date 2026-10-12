@@ -1,6 +1,6 @@
 import { ConfigManager } from "../../config/ConfigManager.js";
 import type { SlashCommandHandler, SlashCommandResult } from "../SlashCommandRouter.js";
-import { isPromptCancelled } from "./SetupPrompts.js";
+import { getInquirerPrompts, isPromptCancelled } from "./SetupPrompts.js";
 
 const API_CREDENTIALS = [
   { key: "GEMINI_API_KEY", label: "Gemini API key" },
@@ -20,7 +20,7 @@ export interface DeleteCommandPrompts {
 
 const inquirerDeletePrompt: DeleteCommandPrompts = {
   chooseCredential: async (options): Promise<string> => {
-    const { select } = await import("@inquirer/prompts");
+    const { select } = await getInquirerPrompts();
     return select({
       message: "Choose a saved API key to delete:",
       choices: options.map((option): { value: string; name: string } => ({ value: option.key, name: option.label })),
