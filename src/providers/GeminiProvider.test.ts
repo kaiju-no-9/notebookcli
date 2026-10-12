@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { Message } from "../agent/Message.js";
 import type { ToolDefinition } from "../tools/ToolRegistry.js";
 import { ErrorKind } from "../utils/ErrorTranslator.js";
-import { GeminiProvider, toGeminiContents, zodToJsonSchema } from "./GeminiProvider.js";
+import { GeminiProvider, toGeminiContents, toProviderError, zodToJsonSchema } from "./GeminiProvider.js";
 import { GeminiStreaming } from "./GeminiStreaming.js";
 
 interface MockModel {
@@ -28,6 +28,12 @@ function mockResponse(parts: Array<Record<string, unknown>>, status?: {
 }
 
 describe("GeminiProvider", (): void => {
+  it("redacts new-format Google authorization keys from provider errors", (): void => {
+    const error = toProviderError(new Error("request failed for AQ.Ab8MockOnlyKey0123456789ABCDEF"));
+    expect(error.message).not.toContain("AQ.Ab8MockOnlyKey0123456789ABCDEF");
+    expect(error.message).toContain("[REDACTED_API_KEY]");
+  });
+
   it("converts object schemas and omits optional fields from required", (): void => {
     const schema = zodToJsonSchema(z.object({
       name: z.string(),

@@ -5,6 +5,7 @@ describe("SecretScanner", (): void => {
   it("detects Google, GitHub, AWS, JWT, and private-key header patterns", (): void => {
     const values = [
       "AIza12345678901234567890123456789012345",
+      "AQ.Ab8MockOnlyKey0123456789ABCDEF",
       "ghp_abcdefghijklmnopqrstuvwxyz1234567890",
       "AKIAIOSFODNN7EXAMPLE",
       "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0",
@@ -40,5 +41,9 @@ describe("SecretScanner", (): void => {
   it("redacts all detected secret matches", (): void => {
     const input = "key=AIza12345678901234567890123456789012345 and ghp_abcdefghijklmnopqrstuvwxyz1234567890";
     expect(SecretScanner.redact(input)).toBe("key=[REDACTED] and [REDACTED]");
+  });
+
+  it("redacts new-format Google authorization keys", (): void => {
+    expect(SecretScanner.redact("key=AQ.Ab8MockOnlyKey0123456789ABCDEF")).toBe("key=[REDACTED]");
   });
 });

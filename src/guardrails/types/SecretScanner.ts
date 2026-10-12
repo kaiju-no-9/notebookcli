@@ -7,6 +7,7 @@ export interface SecretMatch {
 
 const SECRET_PATTERNS: readonly { readonly name: string; readonly pattern: RegExp }[] = [
   { name: "google_api_key", pattern: /AIza[0-9A-Za-z_-]{35}/g },
+  { name: "google_authorization_key", pattern: /AQ\.[A-Za-z0-9._-]{8,}/g },
   { name: "github_token", pattern: /ghp_[A-Za-z0-9]{36}/g },
   { name: "aws_access_key", pattern: /AKIA[0-9A-Z]{16}/g },
   { name: "jwt_token", pattern: /eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+/g },

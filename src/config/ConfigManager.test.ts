@@ -58,6 +58,23 @@ describe("ConfigManager", (): void => {
     expect((await stat(path)).mode & 0o777).toBe(0o600);
   });
 
+  it("can read a stored override without letting an environment default mask it", async (): Promise<void> => {
+    process.env.ODEN_TEST_SECRET = "environment-default";
+    await ConfigManager.set("ODEN_TEST_SECRET", "stored-override");
+    expect(await ConfigManager.get("ODEN_TEST_SECRET")).toBe("environment-default");
+    expect(await ConfigManager.getStored("ODEN_TEST_SECRET")).toBe("stored-override");
+  });
+
+  it("deletes a saved value without changing the environment variable", async (): Promise<void> => {
+    process.env.ODEN_TEST_SECRET = "environment-secret";
+    await ConfigManager.set("ODEN_TEST_SECRET", "stored-secret");
+
+    await ConfigManager.delete("ODEN_TEST_SECRET");
+
+    expect(await ConfigManager.getStored("ODEN_TEST_SECRET")).toBeUndefined();
+    expect(await ConfigManager.get("ODEN_TEST_SECRET")).toBe("environment-secret");
+  });
+
   it("uses AES-256-GCM with a 16-byte IV and authentication tag", async (): Promise<void> => {
     await ConfigManager.set("ODEN_TEST_SECRET", "ciphertext-check");
     const fileContents = await readFile(join(temporaryHome, ".oden", "credentials.enc"));

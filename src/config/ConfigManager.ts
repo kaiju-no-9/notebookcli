@@ -71,6 +71,21 @@ async function readCredentials(): Promise<CredentialMap> {
   }
 }
 
+async function readStoredValue(key: string): Promise<string | undefined> {
+  const keytar = await keytarModule();
+  if (keytar !== undefined) {
+    try {
+      const value = await keytar.getPassword(SERVICE_NAME, key);
+      if (value !== null && value.length > 0) {
+        return value;
+      }
+    } catch {
+      // Keychain access is optional; continue to the encrypted file.
+    }
+  }
+  return (await readCredentials())[key];
+}
+
 async function writeCredentials(credentials: CredentialMap): Promise<void> {
   const path = credentialsPath();
   await mkdir(`${process.env.HOME ?? homedir()}/.oden`, { recursive: true, mode: 0o700 });
@@ -102,24 +117,20 @@ export class ConfigManager {
       return environmentValue;
     }
 
-    const keytar = await keytarModule();
-    if (keytar !== undefined) {
-      try {
-        const value = await keytar.getPassword(SERVICE_NAME, key);
-        if (value !== null && value.length > 0) {
-          return value;
-        }
-      } catch {
-        // Keychain access is optional; continue to the encrypted file.
-      }
-    }
-
-    const stored = await readCredentials();
-    const fileValue = stored[key];
-    if (fileValue !== undefined) {
-      return fileValue;
+    const storedValue = await readStoredValue(key);
+    if (storedValue !== undefined) {
+      return storedValue;
     }
     return promptForValue(key);
+  }
+
+  /**
+   * Read only keychain/encrypted-file storage, bypassing environment variables.
+   * The CLI uses this for explicit interactive provider choices so a persisted
+   * `/provider` choice can replace an environment-provided default on restart.
+   */
+  public static async getStored(key: string): Promise<string | undefined> {
+    return readStoredValue(key);
   }
 
   public static async set(key: string, value: string): Promise<void> {
@@ -138,22 +149,28 @@ export class ConfigManager {
     await writeCredentials(credentials);
   }
 
+  public static async delete(key: string): Promise<void> {
+    const keytar = await keytarModule();
+    if (keytar !== undefined) {
+      try {
+        await keytar.deletePassword(SERVICE_NAME, key);
+      } catch {
+        throw new Error(`Could not delete ${key} from the OS keychain`);
+      }
+    }
+
+    const credentials = await readCredentials();
+    if (Object.hasOwn(credentials, key)) {
+      delete credentials[key];
+      await writeCredentials(credentials);
+    }
+  }
+
   public static async has(key: string): Promise<boolean> {
     const environmentValue = process.env[key];
     if (environmentValue !== undefined && environmentValue.length > 0) {
       return true;
     }
-    const keytar = await keytarModule();
-    if (keytar !== undefined) {
-      try {
-        const value = await keytar.getPassword(SERVICE_NAME, key);
-        if (value !== null && value.length > 0) {
-          return true;
-        }
-      } catch {
-        // Keychain access is optional; continue to the encrypted file.
-      }
-    }
-    return (await readCredentials())[key] !== undefined;
+    return (await readStoredValue(key)) !== undefined;
   }
 }

@@ -80,6 +80,7 @@ export function toProviderError(error: unknown): Error & { kind: ErrorKind } {
 function redactProviderError(message: string): string {
   return message
     .replace(/AIza[0-9A-Za-z_-]{30,}/g, "[REDACTED_API_KEY]")
+    .replace(/AQ\.[A-Za-z0-9._-]{8,}/g, "[REDACTED_API_KEY]")
     .replace(/(authorization\s*[:=]\s*bearer\s+)[^\s,;]+/gi, "$1[REDACTED]")
     .replace(/([?&](?:key|api_key|access_token)=)[^&\s]+/gi, "$1[REDACTED]");
 }

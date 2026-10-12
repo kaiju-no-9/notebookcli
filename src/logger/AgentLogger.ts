@@ -2,6 +2,7 @@ import { createLogger, format, transports, type Logger } from "winston";
 
 const SECRET_PATTERNS: readonly RegExp[] = [
   /AIza[0-9A-Za-z_-]{35}/g,
+  /AQ\.[A-Za-z0-9._-]{8,}/g,
   /ghp_[A-Za-z0-9]{36}/g,
   /AKIA[0-9A-Z]{16}/g,
   /eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+/g,

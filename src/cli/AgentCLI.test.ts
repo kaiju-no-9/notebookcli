@@ -8,13 +8,16 @@ import { Orchestrator } from "../orchestration/Orchestrator.js";
 import { RouteDecision } from "../orchestration/Supervisor.js";
 import { AgentCLI, type PromptReader } from "./AgentCLI.js";
 import { AgentUI } from "./AgentUI.js";
+import { SlashCommandRouter } from "./SlashCommandRouter.js";
 import { TerminalState } from "./TerminalState.js";
 
 class QueueReader implements PromptReader {
   public closed = false;
+  public readonly prompts: string[] = [];
   public constructor(private readonly answers: string[]) {}
 
-  public async question(): Promise<string> {
+  public async question(prompt: string): Promise<string> {
+    this.prompts.push(prompt);
     const answer = this.answers.shift();
     if (answer === undefined) {
       throw new Error("No more input");
@@ -119,5 +122,85 @@ describe("AgentCLI", (): void => {
       "Safe answer",
       "Goodbye.",
     ]);
+  });
+
+  it("intercepts slash commands and shows the active provider and model in the prompt", async (): Promise<void> => {
+    let orchestratorCalls = 0;
+    const outputs: string[] = [];
+    const reader = new QueueReader(["/help", "quit"]);
+    const router = new SlashCommandRouter();
+    router.register({ name: "help", description: "Show help", execute: async () => ({ output: "help text", restart: false }) });
+    const cli = new AgentCLI(
+      { process: async (): Promise<string> => { orchestratorCalls += 1; return "unexpected"; } },
+      new AgentUI((text: string): void => { outputs.push(text); }),
+      new TerminalState(),
+      reader,
+      router,
+      { provider: "gemini", model: "gemini-3.8-flash", providerConfigured: true },
+    );
+
+    expect(await cli.start()).toBe("exit");
+    expect(orchestratorCalls).toBe(0);
+    expect(reader.prompts[0]).toBe("oden [gemini/gemini-3.8-flash]> ");
+    expect(outputs).toContain("help text");
+  });
+
+  it("does not repeat OpenRouter in the prompt for its openrouter/free model ID", async (): Promise<void> => {
+    const reader = new QueueReader(["quit"]);
+    const cli = new AgentCLI(
+      { process: async (): Promise<string> => "unused" },
+      new AgentUI((): void => undefined),
+      new TerminalState(),
+      reader,
+      undefined,
+      { provider: "openrouter", model: "openrouter/free", providerConfigured: true },
+    );
+
+    await cli.start();
+
+    expect(reader.prompts).toEqual(["oden [openrouter/free]> "]);
+  });
+
+  it("limits an unconfigured session to provider, status, and help commands", async (): Promise<void> => {
+    let orchestratorCalls = 0;
+    const outputs: string[] = [];
+    const reader = new QueueReader(["do a task", "/web", "/status", "/help", "quit"]);
+    const router = new SlashCommandRouter();
+    router.register({ name: "web", description: "Configure web", execute: async () => ({ output: "web", restart: false }) });
+    router.register({ name: "status", description: "Show status", execute: async () => ({ output: "status", restart: false }) });
+    router.register({ name: "help", description: "Show help", execute: async () => ({ output: "help", restart: false }) });
+    const cli = new AgentCLI(
+      { process: async (): Promise<string> => { orchestratorCalls += 1; return "unexpected"; } },
+      new AgentUI((text: string): void => { outputs.push(text); }),
+      new TerminalState(),
+      reader,
+      router,
+      { providerConfigured: false },
+    );
+
+    await cli.start();
+    expect(orchestratorCalls).toBe(0);
+    expect(reader.prompts[0]).toBe("oden [no provider]> ");
+    expect(outputs.filter((output): boolean => output.includes("No provider configured"))).toHaveLength(2);
+    expect(outputs).toContain("status");
+    expect(outputs).toContain("help");
+  });
+
+  it("returns restart when a slash command requests a pipeline rebuild", async (): Promise<void> => {
+    const outputs: string[] = [];
+    const router = new SlashCommandRouter();
+    router.register({ name: "provider", description: "Configure provider", execute: async () => ({ output: "saved", restart: true }) });
+    const cli = new AgentCLI(
+      { process: async (): Promise<string> => "unused" },
+      new AgentUI((text: string): void => { outputs.push(text); }),
+      new TerminalState(),
+      new QueueReader(["/provider"]),
+      router,
+      { providerConfigured: false },
+    );
+    expect(await cli.start()).toBe("restart");
+    expect(outputs).toContain("saved");
+    expect(outputs).toContain("Restarting Oden with the saved provider configuration...");
+    expect(outputs).not.toContain("Goodbye.");
   });
 });

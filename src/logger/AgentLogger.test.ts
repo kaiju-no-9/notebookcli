@@ -32,6 +32,13 @@ describe("AgentLogger", (): void => {
     expect(captured.join("")).not.toContain("AIza");
   });
 
+  it("redacts new-format Google authorization keys in messages and metadata", (): void => {
+    const key = "AQ.Ab8MockOnlyKey0123456789ABCDEF";
+    AgentLogger.info(`key=${key}`, { apiKey: key });
+    expect(captured.join("")).not.toContain(key);
+    expect(captured.join("")).toContain("[REDACTED]");
+  });
+
   it("redacts GitHub tokens in messages", (): void => {
     AgentLogger.warn("token ghp_abcdefghijklmnopqrstuvwxyz1234567890");
     expect(captured.join("")).toContain("token [REDACTED]");

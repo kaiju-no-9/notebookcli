@@ -96,6 +96,65 @@ describe("Orchestrator", (): void => {
     expect(orchestrator.getHistory()).toHaveLength(4);
   });
 
+  it("routes explicit memory requests through the tool-enabled Agent path", async (): Promise<void> => {
+    let agentInput = "";
+    let streamCalls = 0;
+    const orchestrator = new Orchestrator(
+      emptyProvider(),
+      { stream: async (): Promise<string> => { streamCalls += 1; return "unexpected direct response"; } },
+      { run: async (input: string): Promise<AgentResult> => { agentInput = input; return agentResult("memory handled"); } },
+      { run: async (): Promise<ResearchBrief> => ({ summary: "", keyFindings: [], sources: [] }) },
+      guard(true), guard(true), supervisor(RouteDecision.DIRECT),
+    );
+
+    expect(await orchestrator.process("Remember that my test tag is violet-42.")).toBe("memory handled");
+    expect(agentInput).toBe("Remember that my test tag is violet-42.");
+    expect(streamCalls).toBe(0);
+  });
+
+  it("executes explicit remember requests directly without calling the LLM pipeline", async (): Promise<void> => {
+    const saved: Array<[string, string]> = [];
+    let guardCalls = 0;
+    let supervisorCalls = 0;
+    let agentCalls = 0;
+    const orchestrator = new Orchestrator(
+      emptyProvider(),
+      { stream: async (): Promise<string> => "unexpected stream" },
+      { run: async (): Promise<AgentResult> => { agentCalls += 1; return agentResult("unexpected agent"); } },
+      { run: async (): Promise<ResearchBrief> => ({ summary: "", keyFindings: [], sources: [] }) },
+      { check: async (): Promise<GuardrailResult> => { guardCalls += 1; return { allowed: true, reason: "ok", confidence: 1, stage: "test" }; } },
+      guard(true),
+      { classify: async (): Promise<ClassificationResult> => { supervisorCalls += 1; return { route: RouteDecision.DIRECT, reasoning: "simple", confidence: 1 }; } },
+      undefined,
+      { save: async (key, value): Promise<string> => { saved.push([key, value]); return "Memory saved for testing."; }, search: async (): Promise<string> => "" },
+    );
+
+    expect(await orchestrator.process("remember that I do not like to code in rust .")).toBe("Memory saved for testing.");
+    expect(saved).toHaveLength(1);
+    expect(saved[0]?.[1]).toBe("I do not like to code in rust");
+    expect(guardCalls).toBe(0);
+    expect(supervisorCalls).toBe(0);
+    expect(agentCalls).toBe(0);
+  });
+
+  it("does not route web searches to Supermemory", async (): Promise<void> => {
+    let agentInput = "";
+    let memorySearchCalls = 0;
+    const orchestrator = new Orchestrator(
+      emptyProvider(),
+      { stream: async (): Promise<string> => "unexpected direct response" },
+      { run: async (input: string): Promise<AgentResult> => { agentInput = input; return agentResult("Web results returned."); } },
+      { run: async (): Promise<ResearchBrief> => ({ summary: "Bun release findings", keyFindings: [], sources: [] }) },
+      guard(true), guard(true), supervisor(RouteDecision.RESEARCH_AND_CODE), undefined,
+      { save: async (): Promise<string> => "unexpected save", search: async (): Promise<string> => { memorySearchCalls += 1; return "unexpected memory result"; } },
+    );
+
+    expect(await orchestrator.process("Search the web for the latest Bun release and give me the source links.")).toBe("Web results returned.");
+    expect(agentInput).toContain("Search the web for the latest Bun release");
+    expect(agentInput).toContain("Bun release findings");
+    expect(memorySearchCalls).toBe(0);
+  });
+
   it("runs ResearchAgent before Agent and passes the research brief", async (): Promise<void> => {
     const order: string[] = [];
     const brief: ResearchBrief = { summary: "Research summary", keyFindings: ["Finding"], sources: [{ title: "Docs", url: "https://example.com" }] };

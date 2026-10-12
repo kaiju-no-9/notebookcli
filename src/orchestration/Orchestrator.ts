@@ -6,6 +6,7 @@ import type { GuardrailContext } from "../guardrails/types/GuardrailContext.js";
 import type { GuardrailResult } from "../guardrails/types/GuardrailResult.js";
 import type { LLMProvider } from "../providers/LLMProvider.js";
 import type { ClassificationResult } from "./Supervisor.js";
+import { SecretScanner } from "../guardrails/types/SecretScanner.js";
 
 export interface AgentService {
   run(input: string, systemPrompt: string, maxSteps?: number): Promise<AgentResult>;
@@ -27,7 +28,34 @@ export interface GuardrailService {
   check(context: GuardrailContext): Promise<GuardrailResult>;
 }
 
-const CODING_SYSTEM_PROMPT = `You are Oden, a careful software engineering agent. Inspect relevant project instructions before making changes, preserve existing work, use project conventions, and verify changes with the requested checks. Explain any blockers accurately.`;
+export interface DirectMemoryTools {
+  save(key: string, value: string): Promise<string>;
+  search(query: string): Promise<string>;
+}
+
+type MemoryIntent =
+  | { readonly kind: "save"; readonly value: string }
+  | { readonly kind: "search"; readonly query: string };
+
+const CODING_SYSTEM_PROMPT = `You are Oden, a careful software engineering agent. Inspect relevant project instructions before making changes, preserve existing work, use project conventions, and verify changes with the requested checks. When the user explicitly asks you to remember a fact or preference, use save_memory; when they ask you to recall saved information, use search_memory. Explain any blockers accurately.`;
+
+function isMemoryToolRequest(input: string): boolean {
+  return /\b(?:remember|recall|memory|supermemory)\b/i.test(input);
+}
+
+function parseDirectMemoryIntent(input: string): MemoryIntent | undefined {
+  const saveMatch = /^\s*(?:please\s+)?remember\s+(?:(?:that|this|for me)\s*:?\s*)?(.+?)\s*[.!]?\s*$/i.exec(input);
+  if (saveMatch?.[1] !== undefined && saveMatch[1].trim().length > 0) {
+    return { kind: "save", value: saveMatch[1].trim() };
+  }
+  if (/^(?:what|which|tell me|please|can you|could you|recall|search|find)\b/i.test(input.trim()) && /\b(?:remember|recall|memory|saved|stored)\b/i.test(input)) {
+    return { kind: "search", query: input.trim() };
+  }
+  if (/^recall\b/i.test(input.trim())) {
+    return { kind: "search", query: input.trim() };
+  }
+  return undefined;
+}
 
 export class Orchestrator {
   private readonly history: Message[] = [];
@@ -41,6 +69,7 @@ export class Orchestrator {
     private readonly outputGuardrails: GuardrailService,
     private readonly supervisor: SupervisorService,
     private readonly callbacks?: RunCallbacks,
+    private readonly directMemoryTools?: DirectMemoryTools,
   ) {
   }
 
@@ -49,6 +78,16 @@ export class Orchestrator {
   }
 
   public async process(input: string): Promise<string> {
+    const memoryIntent = parseDirectMemoryIntent(input);
+    if (memoryIntent !== undefined && this.directMemoryTools !== undefined) {
+      const response = await this.executeDirectMemoryIntent(memoryIntent);
+      this.history.push(
+        { role: "user", parts: [{ text: input }] },
+        { role: "model", parts: [{ text: response }] },
+      );
+      return response;
+    }
+
     let inputCheck: GuardrailResult;
     try {
       inputCheck = await this.inputGuardrails.check({ userMessage: input, conversationHistory: this.getHistory() });
@@ -64,6 +103,9 @@ export class Orchestrator {
       classification = await this.supervisor.classify(input, this.getHistory());
     } catch {
       classification = { route: "CODE_ONLY", reasoning: "Supervisor failed; using coding agent fallback.", confidence: 0 };
+    }
+    if (isMemoryToolRequest(input)) {
+      classification = { route: "CODE_ONLY", reasoning: "Memory requests require the memory tools.", confidence: 1 };
     }
 
     const userMessage: Message = { role: "user", parts: [{ text: input }] };
@@ -122,6 +164,23 @@ export class Orchestrator {
 
     this.history.push(userMessage, { role: "model", parts: [{ text: response }] });
     return response;
+  }
+
+  private async executeDirectMemoryIntent(intent: MemoryIntent): Promise<string> {
+    try {
+      const response = intent.kind === "save"
+        ? await this.directMemoryTools?.save(`oden-memory-${Date.now()}`, intent.value)
+        : await this.directMemoryTools?.search(intent.query);
+      if (response === undefined) {
+        return "Memory tools are not available.";
+      }
+      if (intent.kind === "search" && SecretScanner.containsSecrets(response)) {
+        return "Memory search results were blocked because they appear to contain credentials.";
+      }
+      return response;
+    } catch (error: unknown) {
+      return `Memory operation failed: ${error instanceof Error ? error.message : String(error)}`;
+    }
   }
 
   private async runCodingAgent(input: string): Promise<string> {

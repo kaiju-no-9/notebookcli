@@ -1,7 +1,9 @@
 import { createInterface, type Interface as ReadlineInterface } from "node:readline";
 import { stdin, stdout } from "node:process";
+import type { ProviderType } from "../config/ModelCatalog.js";
 import type { Orchestrator } from "../orchestration/Orchestrator.js";
 import { AgentUI } from "./AgentUI.js";
+import { SlashCommandRouter } from "./SlashCommandRouter.js";
 import { TerminalState } from "./TerminalState.js";
 
 export interface PromptReader {
@@ -11,6 +13,12 @@ export interface PromptReader {
 
 export interface ProcessOrchestrator {
   process(input: string): Promise<string>;
+}
+
+export interface CLIConfig {
+  readonly provider?: ProviderType;
+  readonly model?: string;
+  readonly providerConfigured: boolean;
 }
 
 function defaultReader(): PromptReader {
@@ -35,12 +43,17 @@ export class AgentCLI {
     private readonly ui: AgentUI = new AgentUI(),
     private readonly terminalState: TerminalState = new TerminalState(),
     private readonly reader?: PromptReader,
+    private readonly slashCommands?: SlashCommandRouter,
+    private readonly config: CLIConfig = { provider: "openrouter", model: "openrouter/free", providerConfigured: true },
   ) {}
 
-  public async start(): Promise<void> {
+  public async start(): Promise<"exit" | "restart"> {
     this.ui.render("Oden is ready. Enter 'exit' or 'quit' to leave.");
-    const reader = this.reader ?? defaultReader();
+    const createReader = this.reader === undefined ? defaultReader : (): PromptReader => this.reader as PromptReader;
+    const canReopenReader = this.reader === undefined;
+    let reader = createReader();
     let interrupted = false;
+    let restartRequested = false;
     const onInterrupt = (): void => {
       interrupted = true;
       reader.close();
@@ -50,7 +63,14 @@ export class AgentCLI {
       while (!interrupted) {
         let input: string;
         try {
-          input = await reader.question("oden> ");
+          const model = this.config.model ?? "unknown model";
+          const displayModel = this.config.provider === "openrouter" && model.startsWith("openrouter/")
+            ? model.slice("openrouter/".length)
+            : model;
+          const prompt = this.config.providerConfigured && this.config.provider !== undefined
+            ? `oden [${this.config.provider}/${displayModel}]> `
+            : "oden [no provider]> ";
+          input = await reader.question(prompt);
         } catch {
           break;
         }
@@ -59,6 +79,35 @@ export class AgentCLI {
           break;
         }
         if (input.trim().length === 0) {
+          continue;
+        }
+        if (this.slashCommands?.isSlashCommand(input) === true) {
+          const commandName = input.trim().split(/\s+/, 1)[0]?.slice(1).toLowerCase() ?? "";
+          if (!this.config.providerConfigured && !["provider", "status", "help"].includes(commandName)) {
+            this.ui.render("No provider configured. Run /provider to set up your LLM provider.");
+            continue;
+          }
+          if (canReopenReader) {
+            reader.close();
+          }
+          try {
+            const result = await this.slashCommands.dispatch(input);
+            this.ui.render(result.output);
+            if (result.restart) {
+              restartRequested = true;
+              break;
+            }
+          } catch (error: unknown) {
+            this.ui.render(`Command failed: ${error instanceof Error ? error.message : String(error)}`);
+          } finally {
+            if (canReopenReader && !restartRequested && !interrupted) {
+              reader = createReader();
+            }
+          }
+          continue;
+        }
+        if (!this.config.providerConfigured) {
+          this.ui.render("No provider configured. Run /provider to set up your LLM provider.");
           continue;
         }
         this.terminalState.startSpinner("Working...");
@@ -76,6 +125,11 @@ export class AgentCLI {
       this.terminalState.stopSpinner();
       reader.close();
     }
+    if (restartRequested) {
+      this.ui.render("Restarting Oden with the saved provider configuration...");
+      return "restart";
+    }
     this.ui.render("Goodbye.");
+    return "exit";
   }
 }

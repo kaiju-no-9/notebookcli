@@ -13,7 +13,7 @@ describe("CLI entry point", (): void => {
     expect(OpenRouterConfig.DEFAULT_MODEL).toBe("openrouter/free");
     const defaultProgram = createProgram();
     defaultProgram.parse(["node", "oden"]);
-    expect(defaultProgram.opts<{ provider: string; model?: string }>().provider).toBe(process.env.ODEN_PROVIDER ?? "openrouter");
+    expect(defaultProgram.opts<{ provider?: string; model?: string }>().provider).toBeUndefined();
     expect(defaultProgram.opts<{ provider: string; model?: string }>().model).toBeUndefined();
     expect(createToolRegistry().getNames()).toEqual([
       "coding_context_tool", "code_tool", "get_project_tree", "execute_command",

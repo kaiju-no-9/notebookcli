@@ -1,10 +1,12 @@
 import { z } from "zod";
+import { ConfigManager } from "../config/ConfigManager.js";
 import { MemorySearchRules } from "./MemorySearchRules.js";
 import { fetchPublic, type HttpFetch, type SearchDependencies } from "./SearchTool.js";
 import { ToolRegistry, type ToolDefinition } from "./ToolRegistry.js";
 
 export interface MemoryDependencies {
-  readonly getBaseURL: () => string | undefined;
+  readonly getBaseURL: () => string | undefined | Promise<string | undefined>;
+  readonly getApiKey?: () => string | undefined | Promise<string | undefined>;
   readonly fetch: HttpFetch;
   readonly resolve: SearchDependencies["resolve"];
 }
@@ -12,8 +14,8 @@ export interface MemoryDependencies {
 const saveMemoryParameters = z.object({ key: z.string().trim().min(1).max(200), value: z.string().trim().min(1).max(10_000) });
 const searchMemoryParameters = z.object({ query: z.string().trim().min(1).max(2_000) });
 
-function baseURL(dependencies: MemoryDependencies): URL {
-  const value = dependencies.getBaseURL();
+async function baseURL(dependencies: MemoryDependencies): Promise<URL> {
+  const value = await dependencies.getBaseURL();
   if (value === undefined || value.trim().length === 0) {
     throw new Error("MEMORY_API_URL is not configured");
   }
@@ -31,7 +33,18 @@ function endpoint(root: URL, suffix: string): URL {
 }
 
 export function createMemoryTools(dependencies: MemoryDependencies = {
-  getBaseURL: (): string | undefined => process.env.MEMORY_API_URL,
+  getBaseURL: async (): Promise<string | undefined> => {
+    if (!(await ConfigManager.has("MEMORY_API_URL"))) {
+      return undefined;
+    }
+    return ConfigManager.get("MEMORY_API_URL");
+  },
+  getApiKey: async (): Promise<string | undefined> => {
+    if (!(await ConfigManager.has("SUPERMEMORY_API_KEY"))) {
+      return undefined;
+    }
+    return ConfigManager.get("SUPERMEMORY_API_KEY");
+  },
   fetch,
   resolve: async (hostname: string): Promise<readonly string[]> =>
     (await import("node:dns/promises")).lookup(hostname, { all: true, verbatim: true }).then((entries): string[] => entries.map((entry): string => entry.address)),
@@ -47,14 +60,20 @@ export function createMemoryTools(dependencies: MemoryDependencies = {
         if (!rule.allowed) {
           return `Memory not saved: ${rule.reason}`;
         }
-        const url = endpoint(baseURL(dependencies), "memories");
+        const url = endpoint(await baseURL(dependencies), "memories");
+        const apiKey = await dependencies.getApiKey?.();
+        const supermemory = apiKey !== undefined && apiKey.length > 0;
         const result = await fetchPublic(url, {
           fetch: dependencies.fetch,
           resolve: dependencies.resolve,
         }, {
           method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ key, value }),
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            ...(supermemory ? { Authorization: `Bearer ${apiKey}` } : {}),
+          },
+          body: JSON.stringify(supermemory ? { content: `${key}: ${value}`, customId: key } : { key, value }),
           signal: AbortSignal.timeout(10_000),
         });
         if (!result.ok) {
@@ -78,14 +97,22 @@ export function createMemoryTools(dependencies: MemoryDependencies = {
         if (!rule.allowed) {
           return `Memory search rejected: ${rule.reason}`;
         }
-        const url = endpoint(baseURL(dependencies), "memories/search");
-        url.searchParams.set("q", query);
+        const apiKey = await dependencies.getApiKey?.();
+        const supermemory = apiKey !== undefined && apiKey.length > 0;
+        const url = endpoint(await baseURL(dependencies), supermemory ? "search" : "memories/search");
+        if (!supermemory) {
+          url.searchParams.set("q", query);
+        }
         const result = await fetchPublic(url, {
           fetch: dependencies.fetch,
           resolve: dependencies.resolve,
         }, {
-          method: "GET",
-          headers: { Accept: "application/json" },
+          method: supermemory ? "POST" : "GET",
+          headers: {
+            Accept: "application/json",
+            ...(supermemory ? { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` } : {}),
+          },
+          ...(supermemory ? { body: JSON.stringify({ q: query }) } : {}),
           signal: AbortSignal.timeout(10_000),
         });
         if (!result.ok) {

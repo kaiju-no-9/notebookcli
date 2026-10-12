@@ -6,7 +6,7 @@ Oden is an autonomous terminal agent harness that uses OpenRouter by default and
 
 - Bun 1.1 or later (primary runtime), or Node.js 18 or later for compatible tooling.
 - Docker with Docker Compose and Buildx for building and running the command sandbox.
-- An OpenRouter API key and/or a Google Gemini API key. Set `OPENROUTER_API_KEY` and/or `GEMINI_API_KEY` in the environment or enter the selected provider's key when prompted.
+- An OpenRouter API key and/or a Google Gemini API key. Gemini keys may use the classic `AIza…` format or the newer `AQ.…` authorization-key format. Set `OPENROUTER_API_KEY` and/or `GEMINI_API_KEY` in the environment or enter the selected provider's key when prompted.
 
 ## Setup
 
@@ -31,6 +31,23 @@ OpenRouter is the default. To test Gemini, run `bun run start -- --provider gemi
 To manually check code tools, start Oden in a disposable Git project, then ask it to create a small file and verify the file yourself. The command tool uses the Docker sandbox, so build it once with `docker compose build sandbox` and make sure Docker is running. Review any requested actions before allowing commands that modify files.
 
 OpenRouter defaults to `openrouter/free`, which routes requests to currently available free models and filters for request features such as tool calling and structured outputs. Gemini defaults to `gemini-3.8-flash` with `gemini-3.5-flash-lite` for guard checks. Model environment settings are `OPENROUTER_MODEL`, `OPENROUTER_GUARD_MODEL`, `GEMINI_MODEL`, and `GEMINI_GUARD_MODEL`. Type `exit` or `quit` to close the REPL.
+
+## Interactive configuration
+
+Oden shows the active provider and model in the REPL prompt. Use these slash commands to change provider settings or configure optional services:
+
+| Command | Purpose |
+|---|---|
+| `/provider` | Choose Gemini or OpenRouter, reuse an existing key or enter one if missing, and select a supported model. Oden saves the settings and restarts the application pipeline. |
+| `/web` | Save a Tavily API key for higher quality web search. Leave it blank to keep using fallback search. |
+| `/memory` | Connect Supermemory by entering its API key in a hidden prompt. |
+| `/delete` | Choose and delete a saved Gemini, OpenRouter, Supermemory, or Tavily API key. |
+| `/status` | Show the active provider, model, and configured services. API keys are masked. |
+| `/help` | List available commands. |
+
+Provider, model, and service settings are saved through Oden's `ConfigManager` (OS keychain when available, otherwise an encrypted file under `~/.oden`). `/provider` accepts Gemini keys in both `AIza…` and `AQ.…` formats. Existing environment variables and `.env` settings continue to work; command-line `--provider` and `--model` options take precedence at startup. If no provider and API key are configured, Oden starts in setup mode and accepts `/provider`, `/status`, and `/help` until a provider is set.
+
+To connect Supermemory, run `/memory` and enter your API key at the hidden prompt. Oden uses `https://api.supermemory.ai/v3`, stores the key through `ConfigManager`, and sends it as a Bearer token. You can also set `MEMORY_API_URL=https://api.supermemory.ai/v3` and `SUPERMEMORY_API_KEY` in `.env`.
 
 ## Sandbox
 
