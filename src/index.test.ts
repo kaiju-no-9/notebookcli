@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { createProgram, createApplication, createToolRegistry } from "./index.js";
+import { createProgram, createApplication, createReadOnlySpecialistRegistry, createToolRegistry } from "./index.js";
 import { OpenRouterConfig } from "./providers/OpenRouterConfig.js";
 
 describe("CLI entry point", (): void => {
@@ -20,5 +20,8 @@ describe("CLI entry point", (): void => {
       "coding_context_tool", "code_tool", "get_project_tree", "execute_command",
       "git_command", "search", "save_memory", "search_memory",
     ]);
+    expect(createReadOnlySpecialistRegistry("repo_inspector").getNames()).toEqual(["coding_context_tool", "get_project_tree"]);
+    expect(createReadOnlySpecialistRegistry("test_planner").getNames()).toEqual(["coding_context_tool", "get_project_tree"]);
+    expect(createReadOnlySpecialistRegistry("documentation_researcher").getNames()).toEqual(["search"]);
   });
 });

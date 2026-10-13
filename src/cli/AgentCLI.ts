@@ -1,7 +1,6 @@
 import { createInterface, type Interface as ReadlineInterface } from "node:readline";
 import { stdin, stdout } from "node:process";
 import type { ProviderType } from "../config/ModelCatalog.js";
-import type { Orchestrator } from "../orchestration/Orchestrator.js";
 import { AgentUI } from "./AgentUI.js";
 import { SlashCommandRouter } from "./SlashCommandRouter.js";
 import { TerminalState } from "./TerminalState.js";
@@ -13,6 +12,7 @@ export interface PromptReader {
 
 export interface ProcessOrchestrator {
   process(input: string): Promise<string>;
+  cancelActiveRun?(): void;
 }
 
 export interface CLIConfig {
@@ -39,8 +39,10 @@ function defaultReader(): PromptReader {
 }
 
 export class AgentCLI {
+  private streamedText = "";
+
   public constructor(
-    private readonly orchestrator: Pick<Orchestrator, "process"> | ProcessOrchestrator,
+    private readonly orchestrator: ProcessOrchestrator,
     private readonly ui: AgentUI = new AgentUI(),
     private readonly terminalState: TerminalState = new TerminalState(),
     private readonly reader?: PromptReader,
@@ -48,6 +50,16 @@ export class AgentCLI {
     private readonly config: CLIConfig = { provider: "openrouter", model: "openrouter/free", providerConfigured: true },
     private readonly readerFactory?: () => PromptReader,
   ) {}
+
+  public renderToken(token: string): void {
+    this.streamedText += token;
+    this.ui.renderToken(token);
+  }
+
+  public renderStatus(status: string): void {
+    if (/^(?:Acting step|Planning\.\.\.)/i.test(status)) return;
+    this.ui.renderStatus(status);
+  }
 
   public async start(): Promise<"exit" | "restart"> {
     this.ui.render("Oden is ready. Enter 'exit' or 'quit' to leave.");
@@ -58,6 +70,7 @@ export class AgentCLI {
     let restartRequested = false;
     const onInterrupt = (): void => {
       interrupted = true;
+      this.orchestrator.cancelActiveRun?.();
       reader.close();
     };
     process.on("SIGINT", onInterrupt);
@@ -114,9 +127,16 @@ export class AgentCLI {
         }
         if (canReopenReader) reader.close();
         this.terminalState.startSpinner("Working...");
+        this.streamedText = "";
+        this.ui.renderStatus("Working on your request...");
         try {
           const response = await this.orchestrator.process(input);
-          this.ui.render(response);
+          if (this.streamedText.length > 0) {
+            this.ui.finishStream();
+            if (this.streamedText !== response) this.ui.render(response);
+          } else {
+            this.ui.render(response);
+          }
         } catch (error: unknown) {
           this.ui.render(`Request failed: ${error instanceof Error ? error.message : String(error)}`);
         } finally {

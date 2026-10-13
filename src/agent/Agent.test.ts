@@ -7,6 +7,7 @@ import { ToolRegistry, type ToolDefinition } from "../tools/ToolRegistry.js";
 import { z } from "zod";
 import { loadRunLimits } from "../config/RunLimits.js";
 import { RunContext } from "../utils/RunContext.js";
+import type { LLMProvider } from "../providers/LLMProvider.js";
 
 function response(text: string | null, functionCalls: LLMResponse["functionCalls"] = null): LLMResponse {
   return { text, functionCalls, usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } };
@@ -28,6 +29,27 @@ describe("Agent", (): void => {
     const result = await new Agent(provider, registryWithTool()).run("do work", "system");
     expect(result).toMatchObject({ response: "completed", steps: 1, mode: AgentMode.ACT, toolCalls: [] });
     expect(provider.calls).toHaveLength(1);
+  });
+
+  it("uses tool-enabled streaming and forwards text chunks as they arrive", async (): Promise<void> => {
+    const tokens: string[] = [];
+    let streamed = false;
+    const provider: LLMProvider = {
+      generateContent: async (): Promise<LLMResponse> => response("buffered"),
+      streamContent: async (): Promise<string> => "unused",
+      streamGenerateContent: async (_messages, tools, onToken): Promise<LLMResponse> => {
+        streamed = true;
+        expect(tools?.map((tool): string => tool.name)).toEqual(["test_tool"]);
+        onToken("Streamed ");
+        onToken("answer");
+        return response("Streamed answer");
+      },
+    };
+    const result = await new Agent(provider, registryWithTool(), { onToken: (token: string): void => { tokens.push(token); } }).run("do work", "system");
+
+    expect(streamed).toBe(true);
+    expect(tokens).toEqual(["Streamed ", "answer"]);
+    expect(result.response).toBe("Streamed answer");
   });
 
   it("executes approved tool calls and appends tool results before continuing", async (): Promise<void> => {

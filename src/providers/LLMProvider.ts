@@ -11,6 +11,14 @@ export interface LLMProvider {
     runContext?: RunContext,
   ): Promise<LLMResponse>;
 
+  /** Stream a tool-enabled agent response while preserving any function calls in the final result. */
+  streamGenerateContent?(
+    messages: Message[],
+    tools: ToolDefinition[] | undefined,
+    onToken: (token: string) => void,
+    runContext?: RunContext,
+  ): Promise<LLMResponse>;
+
   streamContent(
     messages: Message[],
     onToken: (token: string) => void,

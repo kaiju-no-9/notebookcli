@@ -9,7 +9,7 @@ import { GeminiStreaming } from "./GeminiStreaming.js";
 
 interface MockModel {
   generateContent: (request: unknown) => Promise<unknown>;
-  generateContentStream: (request: unknown) => Promise<AsyncGenerator<{ text?: string }>>;
+  generateContentStream: (request: unknown) => Promise<AsyncGenerator<Record<string, unknown>>>;
 }
 
 function mockClient(model: MockModel): Pick<GoogleGenAI, "models"> {
@@ -209,6 +209,44 @@ describe("GeminiProvider", (): void => {
     const tokens: string[] = [];
     expect(await provider.streamContent([], (token: string): void => { tokens.push(token); })).toBe("hello world");
     expect(tokens).toEqual(["hello ", "world"]);
+  });
+
+  it("streams tool-enabled responses and retains Gemini function calls and usage", async (): Promise<void> => {
+    let request: Record<string, unknown> | undefined;
+    const model: MockModel = {
+      generateContent: async (): Promise<unknown> => mockResponse([]),
+      generateContentStream: async (value: unknown): Promise<AsyncGenerator<Record<string, unknown>>> => {
+        request = value as Record<string, unknown>;
+        return (async function* (): AsyncGenerator<Record<string, unknown>> {
+          yield { candidates: [{ content: { parts: [{ text: "Inspecting. " }] } }] };
+          yield { candidates: [{ content: { parts: [{
+            functionCall: { id: "gemini-call-1", name: "inspect", args: { path: "README.md" } },
+            thoughtSignature: "thought-signature",
+          }] } }], usageMetadata: { promptTokenCount: 9, candidatesTokenCount: 4, totalTokenCount: 13 } };
+        })();
+      },
+    };
+    const tool: ToolDefinition = {
+      name: "inspect",
+      description: "Inspect a path",
+      parameters: z.object({ path: z.string() }),
+      execute: async (): Promise<string> => "ok",
+    };
+    const tokens: string[] = [];
+    const response = await new GeminiProvider(mockClient(model)).streamGenerateContent(
+      [{ role: "user", parts: [{ text: "inspect README" }] }],
+      [tool],
+      (token: string): void => { tokens.push(token); },
+    );
+
+    expect(tokens).toEqual(["Inspecting. "]);
+    expect(response).toEqual({
+      text: "Inspecting. ",
+      functionCalls: [{ id: "gemini-call-1", name: "inspect", args: { path: "README.md" }, thoughtSignature: "thought-signature" }],
+      usage: { promptTokens: 9, completionTokens: 4, totalTokens: 13 },
+    });
+    const config = request?.config as { tools?: Array<{ functionDeclarations: Array<{ name?: string }> }> };
+    expect(config.tools?.[0]?.functionDeclarations[0]?.name).toBe("inspect");
   });
 
   it("supports the standalone GeminiStreaming API", async (): Promise<void> => {

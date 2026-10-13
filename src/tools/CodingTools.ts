@@ -112,6 +112,10 @@ export const codingContextTool: ToolDefinition = createCodingContextTool(default
 export const codeTool: ToolDefinition = createCodeTool(defaultWorkspace);
 
 export function registerCodingTools(registry: ToolRegistry, workspace: WorkspaceContext = defaultWorkspace): void {
-  registry.register(createCodingContextTool(workspace));
+  registerCodingReadTools(registry, workspace);
   registry.register(createCodeTool(workspace));
+}
+
+export function registerCodingReadTools(registry: ToolRegistry, workspace: WorkspaceContext = defaultWorkspace): void {
+  registry.register(createCodingContextTool(workspace));
 }
