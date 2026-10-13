@@ -3,6 +3,8 @@ import type { Message } from "../agent/Message.js";
 import type { LLMProvider } from "../providers/LLMProvider.js";
 import { OpenRouterConfig } from "../providers/OpenRouterConfig.js";
 import { SUPERVISOR_PROMPT } from "./SupervisorPrompt.js";
+import type { RunContext } from "../utils/RunContext.js";
+import { RunBudgetError } from "../utils/RunContext.js";
 
 export const RouteDecision = {
   DIRECT: "DIRECT",
@@ -34,7 +36,7 @@ export class Supervisor {
     private readonly model: string = OpenRouterConfig.GUARD_MODEL,
   ) {}
 
-  public async classify(input: string, history: Message[] = []): Promise<ClassificationResult> {
+  public async classify(input: string, history: Message[] = [], runContext?: RunContext): Promise<ClassificationResult> {
     try {
       const response = await this.provider.generateContent(
         [
@@ -48,12 +50,14 @@ export class Supervisor {
           responseMimeType: "application/json",
           responseSchema: z.toJSONSchema(CLASSIFICATION_SCHEMA, { target: "draft-07" }),
         },
+        runContext,
       );
       if (response.text === null) {
         throw new Error("Supervisor returned no classification");
       }
       return CLASSIFICATION_SCHEMA.parse(JSON.parse(response.text) as unknown);
-    } catch {
+    } catch (error: unknown) {
+      if (error instanceof RunBudgetError) throw error;
       try {
         this.logger?.warn("Supervisor classification failed; routing to coding agent", { route: RouteDecision.CODE_ONLY });
       } catch {

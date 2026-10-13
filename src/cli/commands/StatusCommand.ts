@@ -1,10 +1,14 @@
 import { ConfigManager } from "../../config/ConfigManager.js";
-import type { ProviderCommandConfig } from "./ProviderCommand.js";
 import type { SlashCommandHandler, SlashCommandResult } from "../SlashCommandRouter.js";
+import type { ProviderCommandConfig } from "./ProviderCommand.js";
 
 export interface StatusCommandConfigStore {
   has(key: string): Promise<boolean>;
   get(key: string): Promise<string>;
+}
+
+export interface StatusCommandCurrent extends ProviderCommandConfig {
+  readonly workspace?: string;
 }
 
 function redact(value: string): string {
@@ -20,7 +24,7 @@ export class StatusCommand implements SlashCommandHandler {
   public readonly description = "Show current provider and configured services";
 
   public constructor(
-    private readonly current: ProviderCommandConfig,
+    private readonly current: StatusCommandCurrent,
     private readonly store: StatusCommandConfigStore = ConfigManager,
   ) {}
 
@@ -38,6 +42,7 @@ export class StatusCommand implements SlashCommandHandler {
         "Oden Configuration",
         `Provider: ${provider ?? "Not configured"}`,
         `Model: ${model ?? "Not configured"}`,
+        `Workspace: ${this.current.workspace ?? "Not configured"}`,
         `API key: ${credential === undefined ? "Not configured" : redact(credential)}`,
         `Web search: ${tavily ? "Tavily configured" : "Fallback search"}`,
         `Memory: ${memoryURL ? (supermemoryKey ? "Supermemory configured" : "Configured") : "Not configured"}`,

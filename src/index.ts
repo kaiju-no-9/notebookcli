@@ -4,6 +4,7 @@ import { Command, Option } from "commander";
 import { Agent } from "./agent/Agent.js";
 import { ResearchAgent } from "./agent/ResearchAgent.js";
 import { AgentCLI } from "./cli/AgentCLI.js";
+import { TerminalApprovalService } from "./cli/TerminalApprovalService.js";
 import { AgentUI } from "./cli/AgentUI.js";
 import { TerminalState } from "./cli/TerminalState.js";
 import { ConfigManager } from "./config/ConfigManager.js";
@@ -12,6 +13,7 @@ import { InputGuardrails } from "./guardrails/input/InputGuardrails.js";
 import { OutputGuardrails } from "./guardrails/output/OutputGuardrails.js";
 import { Orchestrator } from "./orchestration/Orchestrator.js";
 import { Supervisor } from "./orchestration/Supervisor.js";
+import { loadRunLimits } from "./config/RunLimits.js";
 import { GeminiConfig } from "./providers/GeminiConfig.js";
 import { GeminiProvider } from "./providers/GeminiProvider.js";
 import { GeminiStreaming } from "./providers/GeminiStreaming.js";
@@ -26,6 +28,7 @@ import { StatusCommand } from "./cli/commands/StatusCommand.js";
 import { WebCommand } from "./cli/commands/WebCommand.js";
 import { SessionCommand } from "./cli/commands/SessionCommand.js";
 import { SessionStore, type CodingSession } from "./sessions/SessionStore.js";
+import { chooseWorkspace } from "./cli/WorkspacePicker.js";
 import type { Message } from "./agent/Message.js";
 import { ToolRegistry } from "./tools/ToolRegistry.js";
 import { registerCodingTools } from "./tools/CodingTools.js";
@@ -35,10 +38,12 @@ import { registerGitTools } from "./tools/GitTools.js";
 import { registerMemoryTools } from "./tools/MemoryTools.js";
 import { registerSearchTools } from "./tools/SearchTool.js";
 import { ErrorTranslator } from "./utils/ErrorTranslator.js";
+import { WorkspaceContext } from "./utils/WorkspaceContext.js";
 
 export interface ApplicationOptions {
   readonly provider?: ProviderType;
   readonly model?: string;
+  readonly workspace?: string;
 }
 
 export interface ResolvedApplicationConfig extends ApplicationOptions {
@@ -70,15 +75,16 @@ export function createProgram(): Command {
     .addOption(new Option("--provider <provider>", "LLM provider to use (openrouter or gemini)")
       .choices(["openrouter", "gemini"]))
     .option("--model <model>", "Override the selected provider's default model")
+    .option("--workspace <path>", "Select the project workspace Oden may inspect and edit")
     .version("1.0.0");
 }
 
-export function createToolRegistry(): ToolRegistry {
+export function createToolRegistry(workspace: WorkspaceContext = new WorkspaceContext()): ToolRegistry {
   const registry = new ToolRegistry();
-  registerCodingTools(registry);
-  registerFileTools(registry);
-  registerExecuteTools(registry);
-  registerGitTools(registry);
+  registerCodingTools(registry, workspace);
+  registerFileTools(registry, workspace);
+  registerExecuteTools(registry, workspace);
+  registerGitTools(registry, workspace);
   registerSearchTools(registry);
   registerMemoryTools(registry);
   return registry;
@@ -138,6 +144,7 @@ export function createApplication(
   apiKey: string | undefined,
   options: ResolvedApplicationConfig,
   sessionRuntime?: ApplicationSessionRuntime,
+  workspace: WorkspaceContext = new WorkspaceContext(),
 ): AgentCLI {
   const providerType = options.provider;
   const defaults = providerType === undefined ? undefined : providerDefaults(providerType);
@@ -150,6 +157,7 @@ export function createApplication(
     },
   };
   const terminalState = new TerminalState();
+  const approvalService = new TerminalApprovalService();
   let orchestrator: Pick<Orchestrator, "process"> & Partial<Pick<Orchestrator, "getHistory" | "setHistory">>;
   if (!options.providerConfigured || providerType === undefined || apiKey === undefined || defaults === undefined || model === undefined) {
     orchestrator = { process: async (): Promise<string> => "No provider configured. Run /provider to set up your LLM provider." };
@@ -160,9 +168,9 @@ export function createApplication(
     const streaming = providerType === "gemini"
       ? new GeminiStreaming(apiKey, undefined, model)
       : provider as OpenRouterProvider;
-    const registry = createToolRegistry();
+    const registry = createToolRegistry(workspace);
     const callbacks = { onStatus: (status: string): void => terminalState.updateSpinner(status) };
-    const agent = new Agent(provider, registry, callbacks);
+    const agent = new Agent(provider, registry, callbacks, false, approvalService);
     const searchTool = registry.get("search");
     if (searchTool === undefined) {
       throw new Error("Search tool registration failed");
@@ -196,11 +204,13 @@ export function createApplication(
         : async (history: readonly Message[]): Promise<void> => {
           sessionRuntime.activeSession = await sessionRuntime.store.updateActiveHistory(history);
         },
+      loadRunLimits(),
     );
   }
   const config = {
     provider: providerType,
     model,
+    workspace: workspace.root,
     providerConfigured: options.providerConfigured,
     ...(sessionRuntime === undefined ? {} : { sessionTitle: (): string => sessionRuntime.activeSession.title }),
   };
@@ -222,27 +232,36 @@ export function createApplication(
 }
 
 export async function startApplication(options: ApplicationOptions = {}): Promise<void> {
-  let startupOptions = options;
-  const sessionStore = new SessionStore(process.cwd());
+  const configuredWorkspace = options.workspace ?? process.env.ODEN_WORKSPACE;
+  const selectedWorkspace = configuredWorkspace === undefined && process.stdin.isTTY && process.stdout.isTTY
+    ? await chooseWorkspace()
+    : configuredWorkspace;
+  if (selectedWorkspace === undefined && configuredWorkspace === undefined && process.stdin.isTTY && process.stdout.isTTY) {
+    process.stdout.write("Project selection cancelled. Oden was not started.\n");
+    return;
+  }
+  const workspace = new WorkspaceContext(selectedWorkspace);
+  let startupOptions: ApplicationOptions = { ...options, workspace: workspace.root };
+  const sessionStore = new SessionStore(workspace.root);
   const sessionRuntime: ApplicationSessionRuntime = {
     store: sessionStore,
     activeSession: await sessionStore.initialize(),
   };
   while (true) {
     const config = await resolveApplicationConfig(startupOptions);
-    const app = createApplication(config.apiKey, config, sessionRuntime);
+    const app = createApplication(config.apiKey, config, sessionRuntime, workspace);
     if (await app.start() !== "restart") {
       return;
     }
     // A slash-command selection is persisted and takes effect on the rebuilt pipeline.
-    startupOptions = {};
+    startupOptions = { workspace: workspace.root };
   }
 }
 
 export async function main(argv: string[] = process.argv): Promise<void> {
   const program = createProgram();
   await program.parseAsync(argv);
-  const options = program.opts<{ provider?: ProviderType; model?: string }>();
+  const options = program.opts<{ provider?: ProviderType; model?: string; workspace?: string }>();
   try {
     await startApplication(options);
   } catch (error: unknown) {

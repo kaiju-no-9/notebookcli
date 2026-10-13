@@ -5,6 +5,7 @@ import { SecretScanner } from "../types/SecretScanner.js";
 import type { LLMProvider } from "../../providers/LLMProvider.js";
 import { OpenRouterConfig } from "../../providers/OpenRouterConfig.js";
 import { INPUT_GUARDRAIL_PROMPT } from "./InputGuardrailPrompt.js";
+import { RunBudgetError } from "../../utils/RunContext.js";
 
 const CLASSIFICATION_SCHEMA = z.object({
   safe: z.boolean(),
@@ -46,6 +47,7 @@ export class InputGuardrails {
           responseMimeType: "application/json",
           responseSchema: z.toJSONSchema(CLASSIFICATION_SCHEMA, { target: "draft-07" }),
         },
+        context.runContext,
       );
       if (response.text === null) {
         throw new Error("Guardrail classifier returned no JSON response");
@@ -58,7 +60,8 @@ export class InputGuardrails {
         confidence: classification.confidence,
         stage: "llm_classifier",
       };
-    } catch {
+    } catch (error: unknown) {
+      if (error instanceof RunBudgetError) throw error;
       await this.warn("Input guardrail classifier failed open", { stage: "llm_classifier" });
       return { allowed: true, reason: "Guardrail check failed; allowed through", confidence: 0, stage: "llm_fail_open" };
     }

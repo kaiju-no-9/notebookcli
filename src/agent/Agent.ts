@@ -4,6 +4,9 @@ import type { RunCallbacks } from "./RunCallbacks.js";
 import type { LLMProvider } from "../providers/LLMProvider.js";
 import type { FunctionCall } from "../providers/LLMResponse.js";
 import { ToolRegistry } from "../tools/ToolRegistry.js";
+import type { RunContext } from "../utils/RunContext.js";
+import { RunBudgetError } from "../utils/RunContext.js";
+import type { ApprovalService } from "../tools/Approval.js";
 
 export interface ToolCallRecord {
   readonly name: string;
@@ -40,30 +43,32 @@ export class Agent {
     private readonly provider: LLMProvider,
     private readonly tools: ToolRegistry,
     private readonly callbacks?: RunCallbacks,
-    private readonly reflectionEnabled: boolean = true,
+    private readonly planningEnabled: boolean = false,
+    private readonly approvalService?: ApprovalService,
   ) {}
 
-  public async run(input: string, systemPrompt: string, maxSteps: number = 60): Promise<AgentResult> {
+  public async run(input: string, systemPrompt: string, maxSteps: number = 60, runContext?: RunContext): Promise<AgentResult> {
     const messages: Message[] = [
       { role: "user", parts: [{ text: systemPrompt }] },
       { role: "user", parts: [{ text: input }] },
     ];
     const toolCalls: ToolCallRecord[] = [];
+    const repeatedFailures = new Map<string, number>();
     const stepLimit = Number.isFinite(maxSteps) ? Math.max(0, Math.floor(maxSteps)) : 60;
     let lastResponse = "";
 
     for (let step = 1; step <= stepLimit; step += 1) {
-      this.callbacks?.onStatus?.(`Planning step ${step}`);
-      const plan = await this.provider.generateContent(messages, []);
-      if (plan.text !== null) {
-        lastResponse = plan.text;
-        if (plan.text.length > 0) {
-          messages.push(modelMessage(plan.text));
+      if (this.planningEnabled && step === 1) {
+        this.callbacks?.onStatus?.("Planning...");
+        const plan = await this.provider.generateContent(messages, [], undefined, runContext);
+        if (plan.text !== null) {
+          lastResponse = plan.text;
+          if (plan.text.length > 0) messages.push(modelMessage(plan.text));
         }
       }
 
       this.callbacks?.onStatus?.(`Acting step ${step}`);
-      const act = await this.provider.generateContent(messages, this.tools.getAll());
+      const act = await this.provider.generateContent(messages, this.tools.getAll(), undefined, runContext);
       if (act.text !== null && act.text.length > 0) {
         lastResponse = act.text;
       }
@@ -76,24 +81,46 @@ export class Agent {
       }
 
       messages.push(modelMessage(act.text, calls));
-      if (this.reflectionEnabled && !(await this.planReflection(calls, messages))) {
-        messages.push({ role: "model", parts: [{ text: "Reconsidering the proposed tool calls and planning a safer approach." }] });
-        continue;
-      }
-
       for (const call of calls) {
+        runContext?.recordToolInvocation();
         const tool = this.tools.get(call.name);
         let result: string;
         if (tool === undefined) {
           result = `Error: tool '${call.name}' is not registered`;
         } else {
           try {
-            result = await tool.execute(call.args);
+            const parsedArgs = tool.parameters.safeParse(call.args);
+            if (!parsedArgs.success) {
+              result = `Error: invalid arguments for '${call.name}': ${parsedArgs.error.message}`;
+              messages.push({ role: "tool", parts: [{ functionResponse: { ...(call.id === undefined ? {} : { toolCallId: call.id }), name: call.name, response: result } }] });
+              toolCalls.push({ name: call.name, args: structuredClone(call.args), result, timestamp: Date.now() });
+              continue;
+            }
+            result = await tool.execute(parsedArgs.data, {
+              runId: runContext?.runId ?? "untracked-run",
+              ...(this.approvalService === undefined ? {} : { approvalService: this.approvalService }),
+            });
           } catch (error: unknown) {
+            if (error instanceof RunBudgetError) throw error;
             result = `Error executing tool '${call.name}': ${error instanceof Error ? error.message : String(error)}`;
           }
         }
         toolCalls.push({ name: call.name, args: structuredClone(call.args), result, timestamp: Date.now() });
+        const failureKey = `${call.name}:${canonicalize(call.args)}`;
+        if (/^Error(?: executing tool|:)/.test(result)) {
+          const failures = (repeatedFailures.get(failureKey) ?? 0) + 1;
+          repeatedFailures.set(failureKey, failures);
+          if (failures >= 2) {
+            return {
+              response: `Stopped after the same tool call failed ${failures} times (${call.name}). Review the error and adjust the request before retrying.`,
+              steps: step,
+              toolCalls,
+              mode: AgentMode.ACT,
+            };
+          }
+        } else {
+          repeatedFailures.delete(failureKey);
+        }
         messages.push({
           role: "tool",
           parts: [{ functionResponse: {
@@ -115,19 +142,13 @@ export class Agent {
     };
   }
 
-  private async planReflection(calls: readonly FunctionCall[], messages: readonly Message[]): Promise<boolean> {
-    const reflectionMessages: Message[] = [
-      ...messages,
-      {
-        role: "user",
-        parts: [{ text: `Review these proposed tool calls for relevance and safety: ${JSON.stringify(calls)}. Reply with "approved" only if each call is appropriate; otherwise explain that it is rejected.` }],
-      },
-    ];
-    const response = await this.provider.generateContent(reflectionMessages, []);
-    const text = response.text?.toLowerCase() ?? "";
-    if (/\b(reject(?:ed)?|denied|unsafe|not approved)\b/.test(text)) {
-      return false;
-    }
-    return /\bapproved\b|\bproceed\b/.test(text);
+}
+
+function canonicalize(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
+  if (typeof value === "object" && value !== null) {
+    const entries = Object.entries(value).sort(([left], [right]): number => left.localeCompare(right));
+    return `{${entries.map(([key, entry]): string => `${JSON.stringify(key)}:${canonicalize(entry)}`).join(",")}}`;
   }
+  return JSON.stringify(value) ?? "undefined";
 }

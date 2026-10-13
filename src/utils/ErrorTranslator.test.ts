@@ -10,6 +10,8 @@ interface ClassificationCase {
 const classificationCases: readonly ClassificationCase[] = [
   { label: "authentication", error: { status: 401, message: "Unauthorized" }, expected: ErrorKind.AUTH_ERROR },
   { label: "rate limit", error: { status: 429, message: "Too many requests" }, expected: ErrorKind.RATE_LIMIT_ERROR },
+  { label: "daily provider quota", error: { status: 429, message: "You exceeded quota for the per-day free tier" }, expected: ErrorKind.QUOTA_EXCEEDED },
+  { label: "temporary provider outage", error: { status: 503, message: "Unavailable" }, expected: ErrorKind.SERVICE_UNAVAILABLE },
   { label: "network", error: Object.assign(new Error("connection refused"), { code: "ECONNREFUSED" }), expected: ErrorKind.NETWORK_ERROR },
   { label: "timeout", error: Object.assign(new Error("request timed out"), { code: "ETIMEDOUT" }), expected: ErrorKind.TIMEOUT_ERROR },
   { label: "safety", error: new Error("Safety filter blocked the response"), expected: ErrorKind.SAFETY_ERROR },
@@ -64,5 +66,10 @@ describe("ErrorTranslator", (): void => {
     error.cause = error;
 
     expect(ErrorTranslator.translate(error).originalMessage).toBe("outer failure");
+  });
+
+  it("extracts provider retry delays for bounded backoff", (): void => {
+    expect(ErrorTranslator.translate({ message: "temporary", details: [{ retryDelay: "2.5s" }] }).retryAfterMs).toBe(2500);
+    expect(ErrorTranslator.translate(new Error("Please retry in 1.5s")).retryAfterMs).toBe(1500);
   });
 });

@@ -5,6 +5,8 @@ import type { ToolDefinition } from "../tools/ToolRegistry.js";
 import { ErrorKind } from "../utils/ErrorTranslator.js";
 import { OpenRouterConfig } from "./OpenRouterConfig.js";
 import { OpenRouterProvider, toOpenRouterMessages } from "./OpenRouterProvider.js";
+import { RunContext } from "../utils/RunContext.js";
+import type { RunLimits } from "../config/RunLimits.js";
 
 type MockFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -76,6 +78,26 @@ describe("OpenRouterProvider", (): void => {
       functionCalls: [{ id: "call-openrouter-1", name: "inspect", args: { path: "README.md" } }],
       usage: { promptTokens: 12, completionTokens: 4, totalTokens: 16 },
     });
+  });
+
+  it("applies the shared request and token budget to provider calls", async (): Promise<void> => {
+    let requestCount = 0;
+    let maxTokens: unknown;
+    const fetcher: MockFetch = async (_input, init): Promise<Response> => {
+      requestCount += 1;
+      maxTokens = (JSON.parse(String(init?.body)) as Record<string, unknown>).max_tokens;
+      return jsonResponse({ choices: [{ message: { content: "ok" } }], usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 } });
+    };
+    const limits: RunLimits = { maxLLMRequests: 1, maxToolInvocations: 1, maxDurationMs: 10_000, maxTokens: 1_000, maxOutputTokens: 64, maxRetries: 0, maxRetryDelayMs: 0 };
+    const context = new RunContext(limits);
+    const provider = new OpenRouterProvider("test-key", "openrouter/free", fetcher);
+    const messages: Message[] = [{ role: "user", parts: [{ text: "hello" }] }];
+    await provider.generateContent(messages, undefined, undefined, context);
+    expect(requestCount).toBe(1);
+    expect(maxTokens).toBe(64);
+    expect(context.snapshot()).toMatchObject({ requestAttempts: 1, successfulResponses: 1, observedTokens: 7 });
+    await expect(provider.generateContent(messages, undefined, undefined, context)).rejects.toMatchObject({ name: "RunBudgetError" });
+    expect(requestCount).toBe(1);
   });
 
   it("maps assistant tool calls and tool results with matching call IDs", (): void => {

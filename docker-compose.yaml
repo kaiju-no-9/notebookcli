@@ -1,6 +1,5 @@
 services:
   sandbox:
-    container_name: sandbox
     build:
       context: .
       dockerfile: sandbox.Dockerfile
@@ -16,7 +15,7 @@ services:
     security_opt:
       - no-new-privileges:true
     volumes:
-      - ./workspace:/home/sandbox/workspace
+      - ${ODEN_WORKSPACE_ROOT:?ODEN_WORKSPACE_ROOT must point to the selected project}:/home/sandbox/workspace
     working_dir: /home/sandbox/workspace
     stdin_open: true
     tty: true

@@ -4,6 +4,7 @@ import type { ToolDefinition } from "../tools/ToolRegistry.js";
 import { ErrorKind, ErrorTranslator } from "../utils/ErrorTranslator.js";
 import type { LLMProvider } from "./LLMProvider.js";
 import type { LLMResponse } from "./LLMResponse.js";
+import { RunBudgetError, type RunContext } from "../utils/RunContext.js";
 import { OpenRouterConfig } from "./OpenRouterConfig.js";
 
 const UsageSchema = z.object({
@@ -167,7 +168,7 @@ function providerError(error: unknown): Error & { kind: ErrorKind } {
   return translated;
 }
 
-async function errorFromResponse(response: Response): Promise<Error> {
+async function errorFromResponse(response: Response): Promise<Error & { status: number; retryAfterMs?: number }> {
   let detail = `OpenRouter returned HTTP ${response.status}`;
   try {
     const body: unknown = await response.json();
@@ -178,7 +179,9 @@ async function errorFromResponse(response: Response): Promise<Error> {
   } catch {
     // Preserve the HTTP status when the service response is not JSON.
   }
-  return Object.assign(new Error(detail), { status: response.status });
+  const retryHeader = response.headers.get("retry-after-ms") ?? response.headers.get("retry-after");
+  const parsedDelay = retryHeader === null ? undefined : Number(retryHeader);
+  return Object.assign(new Error(detail), { status: response.status, ...(parsedDelay === undefined || !Number.isFinite(parsedDelay) ? {} : { retryAfterMs: parsedDelay * (response.headers.has("retry-after") ? 1000 : 1) }) });
 }
 
 export class OpenRouterProvider implements LLMProvider {
@@ -192,115 +195,95 @@ export class OpenRouterProvider implements LLMProvider {
     messages: Message[],
     tools?: ToolDefinition[],
     config?: Record<string, unknown>,
+    runContext?: RunContext,
   ): Promise<LLMResponse> {
     try {
-      const response = await this.fetcher(OpenRouterConfig.API_URL, {
+      const init = (signal?: AbortSignal): RequestInit => ({
         method: "POST",
         headers: this.headers(),
-        body: JSON.stringify(requestBody(this.defaultModel, messages, tools, config)),
+        body: JSON.stringify(requestBody(this.defaultModel, messages, tools, { ...config, ...(runContext === undefined ? {} : { maxOutputTokens: runContext.maxOutputTokens }) })),
+        ...(signal === undefined ? {} : { signal }),
       });
-      if (!response.ok) {
-        throw await errorFromResponse(response);
-      }
-      const parsed = CompletionSchema.parse(await response.json());
-      const result = parsed.choices[0]?.message;
-      if (result === undefined) {
-        throw new Error("OpenRouter response contained no choices");
-      }
-      const calls = result.tool_calls?.map((call) => {
-        const rawArgs: unknown = typeof call.function.arguments === "string"
-          ? JSON.parse(call.function.arguments)
-          : call.function.arguments;
-        const args = z.record(z.string(), z.unknown()).parse(rawArgs);
-        return { id: call.id, name: call.function.name, args };
-      }) ?? [];
-      return {
-        text: result.content ?? null,
-        functionCalls: calls.length > 0 ? calls : null,
-        usage: {
-          promptTokens: parsed.usage?.prompt_tokens ?? 0,
-          completionTokens: parsed.usage?.completion_tokens ?? 0,
-          totalTokens: parsed.usage?.total_tokens ?? 0,
-        },
+      const send = async (signal?: AbortSignal): Promise<LLMResponse> => {
+        const response = await this.fetcher(OpenRouterConfig.API_URL, init(signal));
+        if (!response.ok) throw await errorFromResponse(response);
+        const parsed = CompletionSchema.parse(await response.json());
+        const result = parsed.choices[0]?.message;
+        if (result === undefined) throw new Error("OpenRouter response contained no choices");
+        const calls = result.tool_calls?.map((call) => {
+          const rawArgs: unknown = typeof call.function.arguments === "string" ? JSON.parse(call.function.arguments) : call.function.arguments;
+          const args = z.record(z.string(), z.unknown()).parse(rawArgs);
+          return { id: call.id, name: call.function.name, args };
+        }) ?? [];
+        return {
+          text: result.content ?? null,
+          functionCalls: calls.length > 0 ? calls : null,
+          usage: { promptTokens: parsed.usage?.prompt_tokens ?? 0, completionTokens: parsed.usage?.completion_tokens ?? 0, totalTokens: parsed.usage?.total_tokens ?? 0 },
+        };
       };
+      return runContext === undefined
+        ? await send()
+        : await runContext.requestModel(messages, runContext.maxOutputTokens, send, (value) => value.usage);
     } catch (error: unknown) {
+      if (error instanceof RunBudgetError) throw error;
       throw providerError(error);
     }
   }
 
-  public async streamContent(messages: Message[], onToken: (token: string) => void): Promise<string> {
+  public async streamContent(messages: Message[], onToken: (token: string) => void, runContext?: RunContext): Promise<string> {
     try {
-      const response = await this.fetcher(OpenRouterConfig.API_URL, {
-        method: "POST",
-        headers: this.headers(),
-        body: JSON.stringify(requestBody(this.defaultModel, messages, undefined, undefined, true)),
-      });
-      if (!response.ok) {
-        throw await errorFromResponse(response);
-      }
-      if (response.body === null) {
-        throw new Error("OpenRouter returned an empty streaming response");
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let eventData: string[] = [];
-      let accumulated = "";
-      const consumeEvent = (): void => {
-        if (eventData.length === 0) {
-          return;
+      const send = async (signal?: AbortSignal): Promise<string> => {
+        const response = await this.fetcher(OpenRouterConfig.API_URL, {
+          method: "POST",
+          headers: this.headers(),
+          body: JSON.stringify(requestBody(this.defaultModel, messages, undefined, runContext === undefined ? undefined : { maxOutputTokens: runContext.maxOutputTokens }, true)),
+          ...(signal === undefined ? {} : { signal }),
+        });
+        if (!response.ok) throw await errorFromResponse(response);
+        if (response.body === null) throw new Error("OpenRouter returned an empty streaming response");
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let eventData: string[] = [];
+        let accumulated = "";
+        const consumeEvent = (): void => {
+          if (eventData.length === 0) return;
+          const data = eventData.join("\n");
+          eventData = [];
+          if (data === "[DONE]") return;
+          const chunk = StreamChunkSchema.parse(JSON.parse(data) as unknown);
+          if (chunk.error !== undefined) throw new Error(chunk.error.message);
+          const token = chunk.choices?.[0]?.delta?.content;
+          if (typeof token === "string" && token.length > 0) { onToken(token); accumulated += token; }
+        };
+        const consumeLine = (line: string): void => {
+          if (line.length === 0) consumeEvent();
+          else if (line.startsWith(":")) { /* SSE keepalive comment. */ }
+          else if (line.startsWith("data:")) eventData.push(line.slice(5).trimStart());
+        };
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) { buffer += decoder.decode(); break; }
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split(/\r?\n/);
+          buffer = lines.pop() ?? "";
+          for (const line of lines) consumeLine(line);
         }
-        const data = eventData.join("\n");
-        eventData = [];
-        if (data === "[DONE]") {
-          return;
-        }
-        const chunk = StreamChunkSchema.parse(JSON.parse(data) as unknown);
-        if (chunk.error !== undefined) {
-          throw new Error(chunk.error.message);
-        }
-        const token = chunk.choices?.[0]?.delta?.content;
-        if (typeof token === "string" && token.length > 0) {
-          onToken(token);
-          accumulated += token;
-        }
+        if (buffer.length > 0) consumeLine(buffer);
+        consumeEvent();
+        return accumulated;
       };
-      const consumeLine = (line: string): void => {
-        if (line.length === 0) {
-          consumeEvent();
-        } else if (line.startsWith(":")) {
-          // OpenRouter sends SSE comments as keepalives; they are not JSON data.
-        } else if (line.startsWith("data:")) {
-          eventData.push(line.slice(5).trimStart());
-        }
-      };
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          buffer += decoder.decode();
-          break;
-        }
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split(/\r?\n/);
-        buffer = lines.pop() ?? "";
-        for (const line of lines) {
-          consumeLine(line);
-        }
-      }
-      if (buffer.length > 0) {
-        consumeLine(buffer);
-      }
-      consumeEvent();
-      return accumulated;
+      return runContext === undefined
+        ? await send()
+        : await runContext.requestModel(messages, runContext.maxOutputTokens, send, () => undefined, false);
     } catch (error: unknown) {
+      if (error instanceof RunBudgetError) throw error;
       throw providerError(error);
     }
   }
 
-  public async stream(messages: Message[], onToken: (token: string) => void): Promise<string> {
-    return this.streamContent(messages, onToken);
+  public async stream(messages: Message[], onToken: (token: string) => void, runContext?: RunContext): Promise<string> {
+    return this.streamContent(messages, onToken, runContext);
   }
 
   private headers(): HeadersInit {

@@ -4,8 +4,11 @@ import { CommandPolicy } from "./CommandPolicy.js";
 describe("CommandPolicy", (): void => {
   it("allows whitelisted commands and safe chains", (): void => {
     expect(CommandPolicy.classify("ls -la").action).toBe("ALLOW");
-    expect(CommandPolicy.classify("npm install").action).toBe("ALLOW");
+    expect(CommandPolicy.classify("npm install").action).toBe("CONFIRM");
     expect(CommandPolicy.classify("git status && pwd").action).toBe("ALLOW");
+    expect(CommandPolicy.classify("git commit -m done").action).toBe("CONFIRM");
+    expect(CommandPolicy.classify("git push").action).toBe("CONFIRM");
+    expect(CommandPolicy.classify("git branch -v").action).toBe("ALLOW");
   });
 
   it("blocks destructive root deletion and fork bombs", (): void => {
