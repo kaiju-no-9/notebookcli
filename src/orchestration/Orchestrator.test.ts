@@ -9,6 +9,7 @@ import type { GuardrailResult } from "../guardrails/types/GuardrailResult.js";
 import { Orchestrator, type AgentService, type GuardrailService, type ResearchAgentService, type StreamingService, type SupervisorService } from "./Orchestrator.js";
 import { RouteDecision, type ClassificationResult } from "./Supervisor.js";
 import type { RunLimits } from "../config/RunLimits.js";
+import type { RunContext } from "../utils/RunContext.js";
 
 function agentResult(response: string): AgentResult {
   return { response, steps: 1, toolCalls: [], mode: AgentMode.ACT };
@@ -78,7 +79,7 @@ describe("Orchestrator", (): void => {
 
   it("shares one run context across classifiers, routing, streaming, and output checks", async (): Promise<void> => {
     const contexts: unknown[] = [];
-    const runLimits: RunLimits = { maxLLMRequests: 8, maxToolInvocations: 8, maxDurationMs: 10_000, maxTokens: 10_000, maxOutputTokens: 128, maxRetries: 0, maxRetryDelayMs: 0 };
+    const runLimits: RunLimits = { maxLLMRequests: 8, maxToolInvocations: 8, maxDurationMs: 10_000, maxTokens: 10_000, maxOutputTokens: 128, maxRetries: 0, maxRetryDelayMs: 0, maxSubagents: 2 };
     const contextGuard: GuardrailService = { check: async (context): Promise<GuardrailResult> => {
       contexts.push(context.runContext);
       return { allowed: true, reason: "ok", confidence: 1, stage: "test" };
@@ -115,6 +116,35 @@ describe("Orchestrator", (): void => {
     expect(await orchestrator.process("task two")).toBe("done 2");
     expect(inputs).toEqual(["task one", "task two"]);
     expect(orchestrator.getHistory()).toHaveLength(4);
+  });
+
+  it("delegates only a complex coding plan and appends compact evidence for parent synthesis", async (): Promise<void> => {
+    const tasks = [
+      { taskId: "inspect", role: "repo_inspector" as const, objective: "Inspect the affected implementation", successCriteria: ["Find entry points"], access: "read_only" as const },
+      { taskId: "tests", role: "test_planner" as const, objective: "Review regression coverage", successCriteria: ["Find relevant tests"], access: "read_only" as const },
+    ];
+    let calls = 0;
+    const subagents = {
+      run: async (_tasks: typeof tasks, _goal: string, _context: RunContext): Promise<Array<{ taskId: string; status: "complete"; summary: string; evidence: []; uncertainties: []; suggestedNextSteps: [] }>> => {
+        calls += 1;
+        return [{ taskId: "inspect", status: "complete", summary: "Found entry point", evidence: [], uncertainties: [], suggestedNextSteps: [] }];
+      },
+      formatEvidence: (): string => "<untrusted_read_only_specialist_evidence>evidence</untrusted_read_only_specialist_evidence>",
+    };
+    const inputs: string[] = [];
+    const runLimits: RunLimits = { maxLLMRequests: 8, maxToolInvocations: 8, maxDurationMs: 10_000, maxTokens: 10_000, maxOutputTokens: 128, maxRetries: 0, maxRetryDelayMs: 0, maxSubagents: 2 };
+    const orchestrator = new Orchestrator(
+      emptyProvider(), { stream: async (): Promise<string> => "" },
+      { run: async (input): Promise<AgentResult> => { inputs.push(input); return agentResult("parent response"); } },
+      { run: async (): Promise<ResearchBrief> => ({ summary: "", keyFindings: [], sources: [] }) },
+      guard(true), guard(true),
+      { classify: async (): Promise<ClassificationResult> => ({ route: RouteDecision.CODE_ONLY, reasoning: "complex", confidence: 1, complexity: "complex", subtasks: tasks }) },
+      undefined, undefined, [], undefined, runLimits, subagents,
+    );
+    expect(await orchestrator.process("Implement a multi-part feature")).toBe("parent response");
+    expect(calls).toBe(1);
+    expect(inputs[0]).toContain("untrusted_read_only_specialist_evidence");
+    expect(inputs[0]).toContain("Implement a multi-part feature");
   });
 
   it("restores initial session history and persists each completed turn", async (): Promise<void> => {

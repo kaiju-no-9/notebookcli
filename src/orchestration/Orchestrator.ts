@@ -9,6 +9,13 @@ import type { ClassificationResult } from "./Supervisor.js";
 import { SecretScanner } from "../guardrails/types/SecretScanner.js";
 import { RunBudgetError, RunContext } from "../utils/RunContext.js";
 import type { RunLimits } from "../config/RunLimits.js";
+import { SubagentPolicy } from "./SubagentPolicy.js";
+import type { SubagentResult, SubagentTask } from "./SubagentTypes.js";
+
+export interface SubagentService {
+  run(tasks: readonly SubagentTask[], userGoal: string, runContext: RunContext): Promise<readonly SubagentResult[]>;
+  formatEvidence(results: readonly SubagentResult[]): string;
+}
 
 export interface AgentService {
   run(input: string, systemPrompt: string, maxSteps?: number, runContext?: RunContext): Promise<AgentResult>;
@@ -63,6 +70,7 @@ function parseDirectMemoryIntent(input: string): MemoryIntent | undefined {
 
 export class Orchestrator {
   private readonly history: Message[];
+  private activeRunContext: RunContext | undefined;
 
   public constructor(
     private readonly provider: LLMProvider,
@@ -77,6 +85,8 @@ export class Orchestrator {
     initialHistory: readonly Message[] = [],
     private readonly persistHistory?: HistoryPersistence,
     private readonly runLimits?: RunLimits,
+    private readonly subagents?: SubagentService,
+    private readonly subagentPolicy: SubagentPolicy = new SubagentPolicy(),
   ) {
     this.history = [...structuredClone(initialHistory)];
   }
@@ -89,8 +99,13 @@ export class Orchestrator {
     this.history.splice(0, this.history.length, ...structuredClone(history));
   }
 
+  public cancelActiveRun(): void {
+    this.activeRunContext?.cancel();
+  }
+
   public async process(input: string): Promise<string> {
     const runContext = this.runLimits === undefined ? undefined : new RunContext(this.runLimits);
+    this.activeRunContext = runContext;
     const memoryIntent = parseDirectMemoryIntent(input);
     if (memoryIntent !== undefined && this.directMemoryTools !== undefined) {
       runContext?.recordToolInvocation();
@@ -155,15 +170,31 @@ export class Orchestrator {
           response = await this.runCodingAgent(input, runContext);
           break;
         }
+        const enrichedInput = this.withResearch(input, brief);
+        let codingInput = enrichedInput;
+        try {
+          codingInput += await this.prepareSubagentEvidence(input, classification, runContext);
+        } catch (error: unknown) {
+          response = `I couldn't complete the request: ${this.errorMessage(error)}`;
+          break;
+        }
         this.callbacks?.onStatus?.("Starting coding agent with research...");
-        response = await this.runCodingAgent(this.withResearch(input, brief), runContext);
+        response = await this.runCodingAgent(codingInput, runContext);
         break;
       }
       case "CODE_ONLY":
-      default:
+      default: {
+        let codingInput = input;
+        try {
+          codingInput += await this.prepareSubagentEvidence(input, classification, runContext);
+        } catch (error: unknown) {
+          response = `I couldn't complete the request: ${this.errorMessage(error)}`;
+          break;
+        }
         this.callbacks?.onStatus?.("Starting coding agent...");
-        response = await this.runCodingAgent(input, runContext);
+        response = await this.runCodingAgent(codingInput, runContext);
         break;
+      }
     }
 
     let outputCheck: GuardrailResult;
@@ -228,6 +259,22 @@ export class Orchestrator {
     const findings = brief.keyFindings.map((finding): string => `- ${finding}`).join("\n");
     const sources = brief.sources.map((source): string => `- ${source.title}: ${source.url}`).join("\n");
     return `${input}\n\nResearch brief:\n${brief.summary}${findings.length === 0 ? "" : `\n\nKey findings:\n${findings}`}${sources.length === 0 ? "" : `\n\nSources:\n${sources}`}`;
+  }
+
+  private async prepareSubagentEvidence(
+    input: string,
+    classification: ClassificationResult,
+    runContext?: RunContext,
+  ): Promise<string> {
+    if (this.subagents === undefined || runContext === undefined || isMemoryToolRequest(input)) return "";
+    const eligibility = this.subagentPolicy.evaluate(classification.route, classification.complexity, classification.subtasks, runContext);
+    if (!eligibility.allowed) return "";
+    this.callbacks?.onStatus?.(`Complex task confirmed; starting ${eligibility.tasks.length} read-only specialists...`);
+    const results = await this.subagents.run(eligibility.tasks, input, runContext);
+    const evidence = this.subagents.formatEvidence(results);
+    if (evidence.length === 0) this.callbacks?.onStatus?.("No usable specialist evidence; continuing with the single-agent path...");
+    else this.callbacks?.onStatus?.("Combining specialist evidence with the parent coding agent...");
+    return evidence;
   }
 
   private errorMessage(error: unknown): string {

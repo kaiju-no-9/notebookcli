@@ -204,6 +204,69 @@ export class GeminiProvider implements LLMProvider {
     }
   }
 
+  public async streamGenerateContent(
+    messages: Message[],
+    tools: ToolDefinition[] | undefined,
+    onToken: (token: string) => void,
+    runContext?: RunContext,
+  ): Promise<LLMResponse> {
+    try {
+      const client = await this.getClient();
+      const send = async (signal?: AbortSignal): Promise<LLMResponse> => {
+        const streamed = await client.models.generateContentStream({
+          model: this.defaultModel,
+          contents: toGeminiContents(messages),
+          config: {
+            maxOutputTokens: runContext?.maxOutputTokens ?? GeminiConfig.MAX_OUTPUT_TOKENS,
+            httpOptions: { retryOptions: { attempts: 1 } },
+            ...(signal === undefined ? {} : { abortSignal: signal }),
+            ...(tools === undefined || tools.length === 0 ? {} : { tools: [{ functionDeclarations: toFunctionDeclarations(tools) }] }),
+          },
+        });
+        const textParts: string[] = [];
+        const functionCalls = new Map<number, { id?: string; name: string; args: Record<string, unknown>; thoughtSignature?: string }>();
+        let usage: LLMResponse["usage"] = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+        for await (const chunk of streamed) {
+          const parts = chunk.candidates?.[0]?.content?.parts ?? [];
+          for (let index = 0; index < parts.length; index += 1) {
+            const part = parts[index];
+            if (part === undefined) continue;
+            if (part.text !== undefined && part.text.length > 0) {
+              textParts.push(part.text);
+              onToken(part.text);
+            }
+            const call = part.functionCall;
+            if (call?.name === undefined) continue;
+            const previous = functionCalls.get(index);
+            const args = { ...(previous?.args ?? {}), ...(call.args ?? {}) };
+            functionCalls.set(index, {
+              ...((call.id ?? previous?.id) === undefined ? {} : { id: call.id ?? previous?.id }),
+              name: call.name,
+              args,
+              ...((part.thoughtSignature ?? previous?.thoughtSignature) === undefined ? {} : { thoughtSignature: part.thoughtSignature ?? previous?.thoughtSignature }),
+            });
+          }
+          const metadata = chunk.usageMetadata;
+          if (metadata !== undefined) {
+            usage = {
+              promptTokens: metadata.promptTokenCount ?? 0,
+              completionTokens: metadata.candidatesTokenCount ?? 0,
+              totalTokens: metadata.totalTokenCount ?? 0,
+            };
+          }
+        }
+        const calls = [...functionCalls.entries()].sort(([left], [right]): number => left - right).map(([, call]) => call);
+        return { text: textParts.length > 0 ? textParts.join("") : null, functionCalls: calls.length > 0 ? calls : null, usage };
+      };
+      return runContext === undefined
+        ? await send()
+        : await runContext.requestModel(messages, runContext.maxOutputTokens, send, (value) => value.usage, false);
+    } catch (error: unknown) {
+      if (error instanceof RunBudgetError) throw error;
+      throw toProviderError(error);
+    }
+  }
+
   private async createClient(): Promise<Pick<GoogleGenAI, "models">> {
     const { ConfigManager } = await import("../config/ConfigManager.js");
     const key = this.apiKey ?? await ConfigManager.get("GEMINI_API_KEY");

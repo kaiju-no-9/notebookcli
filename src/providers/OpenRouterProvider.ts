@@ -34,8 +34,16 @@ const CompletionSchema = z.object({
 const StreamChunkSchema = z.object({
   error: z.object({ message: z.string() }).optional(),
   choices: z.array(z.object({
-    delta: z.object({ content: z.union([z.string(), z.null()]).optional() }).optional(),
+    delta: z.object({
+      content: z.union([z.string(), z.null()]).optional(),
+      tool_calls: z.array(z.object({
+        index: z.number().int().nonnegative(),
+        id: z.string().optional(),
+        function: z.object({ name: z.string().optional(), arguments: z.string().optional() }).optional(),
+      })).optional(),
+    }).optional(),
   })).optional(),
+  usage: z.object({ prompt_tokens: z.number().optional(), completion_tokens: z.number().optional(), total_tokens: z.number().optional() }).optional(),
 });
 
 interface OpenRouterTool {
@@ -276,6 +284,95 @@ export class OpenRouterProvider implements LLMProvider {
       return runContext === undefined
         ? await send()
         : await runContext.requestModel(messages, runContext.maxOutputTokens, send, () => undefined, false);
+    } catch (error: unknown) {
+      if (error instanceof RunBudgetError) throw error;
+      throw providerError(error);
+    }
+  }
+
+  public async streamGenerateContent(
+    messages: Message[],
+    tools: ToolDefinition[] | undefined,
+    onToken: (token: string) => void,
+    runContext?: RunContext,
+  ): Promise<LLMResponse> {
+    try {
+      const send = async (signal?: AbortSignal): Promise<LLMResponse> => {
+        const response = await this.fetcher(OpenRouterConfig.API_URL, {
+          method: "POST",
+          headers: this.headers(),
+          body: JSON.stringify(requestBody(this.defaultModel, messages, tools, runContext === undefined ? undefined : { maxOutputTokens: runContext.maxOutputTokens }, true)),
+          ...(signal === undefined ? {} : { signal }),
+        });
+        if (!response.ok) throw await errorFromResponse(response);
+        if (response.body === null) throw new Error("OpenRouter returned an empty streaming response");
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        const toolCalls = new Map<number, { id?: string; name: string; arguments: string }>();
+        let text = "";
+        let buffer = "";
+        let eventData: string[] = [];
+        let usage: LLMResponse["usage"] = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+        const consumeEvent = (): void => {
+          if (eventData.length === 0) return;
+          const data = eventData.join("\n");
+          eventData = [];
+          if (data === "[DONE]") return;
+          const chunk = StreamChunkSchema.parse(JSON.parse(data) as unknown);
+          if (chunk.error !== undefined) throw new Error(chunk.error.message);
+          if (chunk.usage !== undefined) {
+            usage = {
+              promptTokens: chunk.usage.prompt_tokens ?? 0,
+              completionTokens: chunk.usage.completion_tokens ?? 0,
+              totalTokens: chunk.usage.total_tokens ?? 0,
+            };
+          }
+          for (const choice of chunk.choices ?? []) {
+            const delta = choice.delta;
+            const token = delta?.content;
+            if (typeof token === "string" && token.length > 0) {
+              text += token;
+              onToken(token);
+            }
+            for (const call of delta?.tool_calls ?? []) {
+              const existing = toolCalls.get(call.index) ?? { name: "", arguments: "" };
+              if (call.id !== undefined) existing.id = call.id;
+              if (call.function?.name !== undefined) existing.name += call.function.name;
+              if (call.function?.arguments !== undefined) existing.arguments += call.function.arguments;
+              toolCalls.set(call.index, existing);
+            }
+          }
+        };
+        const consumeLine = (line: string): void => {
+          if (line.length === 0) consumeEvent();
+          else if (line.startsWith(":")) { /* SSE keepalive comment. */ }
+          else if (line.startsWith("data:")) eventData.push(line.slice(5).trimStart());
+        };
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) { buffer += decoder.decode(); break; }
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split(/\r?\n/);
+            buffer = lines.pop() ?? "";
+            for (const line of lines) consumeLine(line);
+          }
+          if (buffer.length > 0) consumeLine(buffer);
+          consumeEvent();
+        } catch (error: unknown) {
+          await reader.cancel(error).catch((): void => undefined);
+          throw error;
+        }
+        const calls = [...toolCalls.entries()].sort(([left], [right]): number => left - right).map(([index, call]) => {
+          if (call.name.length === 0) throw new Error(`OpenRouter stream omitted tool name at index ${index}`);
+          const args = z.record(z.string(), z.unknown()).parse(JSON.parse(call.arguments || "{}") as unknown);
+          return { id: call.id ?? `stream_call_${index}`, name: call.name, args };
+        });
+        return { text: text.length > 0 ? text : null, functionCalls: calls.length > 0 ? calls : null, usage };
+      };
+      return runContext === undefined
+        ? await send()
+        : await runContext.requestModel(messages, runContext.maxOutputTokens, send, (value) => value.usage, false);
     } catch (error: unknown) {
       if (error instanceof RunBudgetError) throw error;
       throw providerError(error);

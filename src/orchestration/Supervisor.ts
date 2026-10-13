@@ -5,6 +5,7 @@ import { OpenRouterConfig } from "../providers/OpenRouterConfig.js";
 import { SUPERVISOR_PROMPT } from "./SupervisorPrompt.js";
 import type { RunContext } from "../utils/RunContext.js";
 import { RunBudgetError } from "../utils/RunContext.js";
+import { SubagentPlanSchema, type SubagentTask } from "./SubagentTypes.js";
 
 export const RouteDecision = {
   DIRECT: "DIRECT",
@@ -17,6 +18,8 @@ export interface ClassificationResult {
   readonly route: RouteDecision;
   readonly reasoning: string;
   readonly confidence: number;
+  readonly complexity?: "simple" | "complex";
+  readonly subtasks?: readonly SubagentTask[];
 }
 
 export interface SupervisorLogger {
@@ -27,6 +30,8 @@ const CLASSIFICATION_SCHEMA = z.object({
   route: z.enum([RouteDecision.DIRECT, RouteDecision.CODE_ONLY, RouteDecision.RESEARCH_AND_CODE]),
   reasoning: z.string(),
   confidence: z.number().min(0).max(1),
+  complexity: z.enum(["simple", "complex"]).optional(),
+  subtasks: SubagentPlanSchema.optional(),
 });
 
 export class Supervisor {

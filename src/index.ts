@@ -13,6 +13,8 @@ import { InputGuardrails } from "./guardrails/input/InputGuardrails.js";
 import { OutputGuardrails } from "./guardrails/output/OutputGuardrails.js";
 import { Orchestrator } from "./orchestration/Orchestrator.js";
 import { Supervisor } from "./orchestration/Supervisor.js";
+import { SubagentCoordinator } from "./orchestration/SubagentCoordinator.js";
+import type { SubagentRole } from "./orchestration/SubagentTypes.js";
 import { loadRunLimits } from "./config/RunLimits.js";
 import { GeminiConfig } from "./providers/GeminiConfig.js";
 import { GeminiProvider } from "./providers/GeminiProvider.js";
@@ -31,7 +33,7 @@ import { SessionStore, type CodingSession } from "./sessions/SessionStore.js";
 import { chooseWorkspace } from "./cli/WorkspacePicker.js";
 import type { Message } from "./agent/Message.js";
 import { ToolRegistry } from "./tools/ToolRegistry.js";
-import { registerCodingTools } from "./tools/CodingTools.js";
+import { registerCodingReadTools, registerCodingTools } from "./tools/CodingTools.js";
 import { registerFileTools } from "./tools/FileTools.js";
 import { registerExecuteTools } from "./tools/executeTools.js";
 import { registerGitTools } from "./tools/GitTools.js";
@@ -87,6 +89,17 @@ export function createToolRegistry(workspace: WorkspaceContext = new WorkspaceCo
   registerGitTools(registry, workspace);
   registerSearchTools(registry);
   registerMemoryTools(registry);
+  return registry;
+}
+
+export function createReadOnlySpecialistRegistry(role: SubagentRole, workspace: WorkspaceContext = new WorkspaceContext()): ToolRegistry {
+  const registry = new ToolRegistry();
+  if (role === "documentation_researcher") {
+    registerSearchTools(registry);
+    return registry;
+  }
+  registerCodingReadTools(registry, workspace);
+  registerFileTools(registry, workspace);
   return registry;
 }
 
@@ -158,6 +171,8 @@ export function createApplication(
   };
   const terminalState = new TerminalState();
   const approvalService = new TerminalApprovalService();
+  let statusOutput: (status: string) => void = (): void => undefined;
+  let tokenOutput: (token: string) => void = (): void => undefined;
   let orchestrator: Pick<Orchestrator, "process"> & Partial<Pick<Orchestrator, "getHistory" | "setHistory">>;
   if (!options.providerConfigured || providerType === undefined || apiKey === undefined || defaults === undefined || model === undefined) {
     orchestrator = { process: async (): Promise<string> => "No provider configured. Run /provider to set up your LLM provider." };
@@ -169,8 +184,14 @@ export function createApplication(
       ? new GeminiStreaming(apiKey, undefined, model)
       : provider as OpenRouterProvider;
     const registry = createToolRegistry(workspace);
-    const callbacks = { onStatus: (status: string): void => terminalState.updateSpinner(status) };
+    const callbacks = {
+      onStatus: (status: string): void => { terminalState.updateSpinner(status); statusOutput(status); },
+      onToken: (token: string): void => { tokenOutput(token); },
+    };
     const agent = new Agent(provider, registry, callbacks, false, approvalService);
+    const specialistCallbacks = { onStatus: callbacks.onStatus };
+    const subagents = new SubagentCoordinator((role: SubagentRole): Agent =>
+      new Agent(provider, createReadOnlySpecialistRegistry(role, workspace), specialistCallbacks));
     const searchTool = registry.get("search");
     if (searchTool === undefined) {
       throw new Error("Search tool registration failed");
@@ -205,6 +226,7 @@ export function createApplication(
           sessionRuntime.activeSession = await sessionRuntime.store.updateActiveHistory(history);
         },
       loadRunLimits(),
+      subagents,
     );
   }
   const config = {
@@ -221,7 +243,7 @@ export function createApplication(
     }
     orchestrator.setHistory?.(session.history);
   };
-  return new AgentCLI(
+  const cli = new AgentCLI(
     orchestrator,
     new AgentUI(),
     terminalState,
@@ -229,6 +251,9 @@ export function createApplication(
     createSlashCommandRouter(config, sessionRuntime, getHistory, activateSession),
     config,
   );
+  statusOutput = (status: string): void => cli.renderStatus(status);
+  tokenOutput = (token: string): void => cli.renderToken(token);
+  return cli;
 }
 
 export async function startApplication(options: ApplicationOptions = {}): Promise<void> {

@@ -68,7 +68,9 @@ export class Agent {
       }
 
       this.callbacks?.onStatus?.(`Acting step ${step}`);
-      const act = await this.provider.generateContent(messages, this.tools.getAll(), undefined, runContext);
+      const act = this.callbacks?.onToken !== undefined && this.provider.streamGenerateContent !== undefined
+        ? await this.provider.streamGenerateContent(messages, this.tools.getAll(), this.callbacks.onToken, runContext)
+        : await this.provider.generateContent(messages, this.tools.getAll(), undefined, runContext);
       if (act.text !== null && act.text.length > 0) {
         lastResponse = act.text;
       }

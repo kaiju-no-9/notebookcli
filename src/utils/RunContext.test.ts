@@ -4,7 +4,7 @@ import type { RunLimits } from "../config/RunLimits.js";
 
 const limits: RunLimits = {
   maxLLMRequests: 2, maxToolInvocations: 1, maxDurationMs: 10_000,
-  maxTokens: 1_000, maxOutputTokens: 100, maxRetries: 0, maxRetryDelayMs: 0,
+  maxTokens: 1_000, maxOutputTokens: 100, maxRetries: 0, maxRetryDelayMs: 0, maxSubagents: 2,
 };
 const usage = (totalTokens: number): ModelUsage => ({ promptTokens: totalTokens, completionTokens: 0, totalTokens });
 
@@ -34,5 +34,29 @@ describe("RunContext", (): void => {
     }, (): ModelUsage => usage(2));
     expect(result).toBe("ok");
     expect(context.snapshot()).toMatchObject({ requestAttempts: 2, retries: 1 });
+  });
+
+  it("reserves a request and token headroom for the parent during child work", async (): Promise<void> => {
+    const context = new RunContext({ ...limits, maxLLMRequests: 5, maxTokens: 10_000 });
+    expect(context.canStartSubagents(2)).toBe(true);
+    await context.withSubagentPhase(async (): Promise<void> => {
+      await context.requestModel([], 100, async (): Promise<string> => "ok", (): ModelUsage => usage(10));
+      await context.requestModel([], 100, async (): Promise<string> => "ok", (): ModelUsage => usage(10));
+      await context.requestModel([], 100, async (): Promise<string> => "ok", (): ModelUsage => usage(10));
+      await context.requestModel([], 100, async (): Promise<string> => "ok", (): ModelUsage => usage(10));
+      await expect(context.requestModel([], 100, async (): Promise<string> => "no", (): undefined => undefined)).rejects.toBeInstanceOf(RunBudgetError);
+    });
+    await context.requestModel([], 100, async (): Promise<string> => "parent", (): ModelUsage => usage(10));
+    expect(context.snapshot().requestAttempts).toBe(5);
+  });
+
+  it("aborts in-flight provider work and prevents subsequent requests when cancelled", async (): Promise<void> => {
+    const context = new RunContext(limits);
+    const request = context.requestModel([], 10, (signal): Promise<string> => new Promise((_resolve, reject): void => {
+      signal.addEventListener("abort", (): void => reject(signal.reason), { once: true });
+    }), (): undefined => undefined);
+    context.cancel();
+    await expect(request).rejects.toBeInstanceOf(RunBudgetError);
+    await expect(context.requestModel([], 10, async (): Promise<string> => "no", (): undefined => undefined)).rejects.toBeInstanceOf(RunBudgetError);
   });
 });

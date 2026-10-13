@@ -88,7 +88,7 @@ describe("OpenRouterProvider", (): void => {
       maxTokens = (JSON.parse(String(init?.body)) as Record<string, unknown>).max_tokens;
       return jsonResponse({ choices: [{ message: { content: "ok" } }], usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 } });
     };
-    const limits: RunLimits = { maxLLMRequests: 1, maxToolInvocations: 1, maxDurationMs: 10_000, maxTokens: 1_000, maxOutputTokens: 64, maxRetries: 0, maxRetryDelayMs: 0 };
+    const limits: RunLimits = { maxLLMRequests: 1, maxToolInvocations: 1, maxDurationMs: 10_000, maxTokens: 1_000, maxOutputTokens: 64, maxRetries: 0, maxRetryDelayMs: 0, maxSubagents: 2 };
     const context = new RunContext(limits);
     const provider = new OpenRouterProvider("test-key", "openrouter/free", fetcher);
     const messages: Message[] = [{ role: "user", parts: [{ text: "hello" }] }];
@@ -132,6 +132,44 @@ describe("OpenRouterProvider", (): void => {
     const result = await provider.streamContent([{ role: "user", parts: [{ text: "hello" }] }], (token: string): void => { chunks.push(token); });
     expect(result).toBe("Hello there");
     expect(chunks).toEqual(["Hello", " there"]);
+  });
+
+  it("streams tool-enabled responses and assembles fragmented function calls", async (): Promise<void> => {
+    let requestBody: Record<string, unknown> | undefined;
+    const fetcher: MockFetch = async (_input, init): Promise<Response> => {
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(
+        "data: {\"choices\":[{\"delta\":{\"content\":\"Checking. \"}}]}\n\n"
+        + "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call-stream-1\",\"function\":{\"name\":\"inspect\",\"arguments\":\"{\\\"path\\\":\"}}]}}]}\n\n"
+        + "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"README.md\\\"}\"}}]}}]}\n\n"
+        + "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":7,\"completion_tokens\":3,\"total_tokens\":10}}\n\n"
+        + "data: [DONE]\n\n",
+        { headers: { "Content-Type": "text/event-stream" } },
+      );
+    };
+    const tool: ToolDefinition = {
+      name: "inspect",
+      description: "Inspect a path",
+      parameters: z.object({ path: z.string() }),
+      execute: async (): Promise<string> => "ok",
+    };
+    const provider = new OpenRouterProvider("test-key", "openrouter/free", fetcher);
+    const tokens: string[] = [];
+
+    const response = await provider.streamGenerateContent(
+      [{ role: "user", parts: [{ text: "inspect README" }] }],
+      [tool],
+      (token: string): void => { tokens.push(token); },
+    );
+
+    expect(tokens).toEqual(["Checking. "]);
+    expect(response).toEqual({
+      text: "Checking. ",
+      functionCalls: [{ id: "call-stream-1", name: "inspect", args: { path: "README.md" } }],
+      usage: { promptTokens: 7, completionTokens: 3, totalTokens: 10 },
+    });
+    expect(requestBody?.stream).toBe(true);
+    expect(requestBody?.tools).toHaveLength(1);
   });
 
   it("translates OpenRouter authentication failures", async (): Promise<void> => {

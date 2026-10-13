@@ -44,9 +44,42 @@ describe("AgentCLI", (): void => {
     );
     await cli.start();
     expect(inputs).toEqual(["hello"]);
-    expect(outputs).toEqual(["Oden is ready. Enter 'exit' or 'quit' to leave.", "Hi from Oden", "Goodbye."]);
+    expect(outputs).toEqual([
+      "Oden is ready. Enter 'exit' or 'quit' to leave.",
+      "\n[Oden] Working on your request...\n",
+      "Hi from Oden",
+      "Goodbye.",
+    ]);
     expect(reader.closed).toBe(true);
     expect(state.currentSpinnerMessage).toBeUndefined();
+  });
+
+  it("renders status events and streamed text without repeating the final answer", async (): Promise<void> => {
+    const output: string[] = [];
+    let cli!: AgentCLI;
+    cli = new AgentCLI(
+      { process: async (): Promise<string> => {
+        cli.renderStatus("Searching files...");
+        cli.renderToken("The answer is ");
+        cli.renderToken("42.");
+        return "The answer is 42.";
+      } },
+      new AgentUI((text: string): void => { output.push(text); }, (text: string): void => { output.push(text); }),
+      new TerminalState(),
+      new QueueReader(["question", "quit"]),
+    );
+
+    await cli.start();
+
+    expect(output).toEqual([
+      "Oden is ready. Enter 'exit' or 'quit' to leave.",
+      "\n[Oden] Working on your request...\n",
+      "\n[Oden] Searching files...\n",
+      "The answer is ",
+      "42.",
+      "\n",
+      "Goodbye.",
+    ]);
   });
 
   it("handles quit and skips blank input", async (): Promise<void> => {
@@ -145,6 +178,7 @@ describe("AgentCLI", (): void => {
     expect(order).toEqual(["input guard", "classification", "stream", "output guard"]);
     expect(outputs).toEqual([
       "Oden is ready. Enter 'exit' or 'quit' to leave.",
+      "\n[Oden] Working on your request...\n",
       "Safe answer",
       "Goodbye.",
     ]);

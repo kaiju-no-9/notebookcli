@@ -40,6 +40,10 @@ export class RunContext {
   private estimatedTokens = 0;
   private reservedTokens = 0;
   private stopReason: string | undefined;
+  private subagentPhaseActive = false;
+  private parentSynthesisReserve = 0;
+  private readonly activeControllers = new Set<AbortController>();
+  private cancelled = false;
 
   public constructor(
     public readonly limits: RunLimits,
@@ -54,6 +58,28 @@ export class RunContext {
 
   public get maxOutputTokens(): number {
     return this.limits.maxOutputTokens;
+  }
+
+  public canStartSubagents(childCount: number): boolean {
+    if (childCount < 2 || childCount > this.limits.maxSubagents || childCount > 3 || this.subagentPhaseActive) return false;
+    const reservedRequests = childCount * 2 + 1;
+    const reservedTokens = this.limits.maxOutputTokens + 4_096;
+    const usedTokens = this.observedTokens + this.estimatedTokens + this.reservedTokens;
+    return this.requestAttempts + reservedRequests <= this.limits.maxLLMRequests
+      && usedTokens + reservedTokens <= this.limits.maxTokens
+      && this.now() - this.startedAt < this.limits.maxDurationMs;
+  }
+
+  public async withSubagentPhase<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.subagentPhaseActive) throw new RunBudgetError("recursive subagent execution is disabled");
+    this.subagentPhaseActive = true;
+    this.parentSynthesisReserve = this.limits.maxOutputTokens + 4_096;
+    try {
+      return await operation();
+    } finally {
+      this.subagentPhaseActive = false;
+      this.parentSynthesisReserve = 0;
+    }
   }
 
   public async requestModel<T>(
@@ -72,6 +98,7 @@ export class RunContext {
       this.requestAttempts += 1;
       this.reservedTokens += reservation;
       const controller = new AbortController();
+      this.activeControllers.add(controller);
       const remainingMs = Math.max(1, this.limits.maxDurationMs - (this.now() - this.startedAt));
       const timer = setTimeout((): void => controller.abort(new RunBudgetError("maximum run duration reached")), remainingMs);
       try {
@@ -111,6 +138,7 @@ export class RunContext {
         await this.sleep(delay);
       } finally {
         clearTimeout(timer);
+        this.activeControllers.delete(controller);
       }
     }
   }
@@ -125,15 +153,24 @@ export class RunContext {
   }
 
   public assertCanContinue(reservation = 0): void {
+    if (this.cancelled) throw new RunBudgetError("request interrupted by user");
     this.assertWithinDuration();
-    if (this.requestAttempts >= this.limits.maxLLMRequests) {
-      this.stopReason = `LLM request budget exhausted (${this.requestAttempts}/${this.limits.maxLLMRequests})`;
+    const requestLimit = this.limits.maxLLMRequests - (this.subagentPhaseActive ? 1 : 0);
+    if (this.requestAttempts >= requestLimit) {
+      this.stopReason = `LLM request budget exhausted (${this.requestAttempts}/${requestLimit}${this.subagentPhaseActive ? ", parent synthesis request reserved" : ""})`;
       throw new RunBudgetError(this.stopReason);
     }
-    if (this.observedTokens + this.estimatedTokens + this.reservedTokens + reservation > this.limits.maxTokens) {
-      this.stopReason = `token budget would be exceeded (${this.observedTokens + this.estimatedTokens + this.reservedTokens + reservation}/${this.limits.maxTokens} estimated or observed tokens)`;
+    if (this.observedTokens + this.estimatedTokens + this.reservedTokens + reservation + this.parentSynthesisReserve > this.limits.maxTokens) {
+      this.stopReason = `token budget would be exceeded (${this.observedTokens + this.estimatedTokens + this.reservedTokens + reservation + this.parentSynthesisReserve}/${this.limits.maxTokens} estimated or observed tokens)`;
       throw new RunBudgetError(this.stopReason);
     }
+  }
+
+  public cancel(reason: string = "request interrupted by user"): void {
+    const error = new RunBudgetError(reason);
+    this.cancelled = true;
+    this.stopReason = error.message;
+    for (const controller of this.activeControllers) controller.abort(error);
   }
 
   public snapshot(): RunSnapshot {
@@ -151,6 +188,7 @@ export class RunContext {
   }
 
   private assertWithinDuration(): void {
+    if (this.cancelled) throw new RunBudgetError("request interrupted by user");
     if (this.now() - this.startedAt >= this.limits.maxDurationMs) {
       this.stopReason = `maximum run duration reached (${this.limits.maxDurationMs} ms)`;
       throw new RunBudgetError(this.stopReason);
