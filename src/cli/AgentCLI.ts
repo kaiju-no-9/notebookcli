@@ -46,12 +46,13 @@ export class AgentCLI {
     private readonly reader?: PromptReader,
     private readonly slashCommands?: SlashCommandRouter,
     private readonly config: CLIConfig = { provider: "openrouter", model: "openrouter/free", providerConfigured: true },
+    private readonly readerFactory?: () => PromptReader,
   ) {}
 
   public async start(): Promise<"exit" | "restart"> {
     this.ui.render("Oden is ready. Enter 'exit' or 'quit' to leave.");
-    const createReader = this.reader === undefined ? defaultReader : (): PromptReader => this.reader as PromptReader;
-    const canReopenReader = this.reader === undefined;
+    const createReader = this.readerFactory ?? (this.reader === undefined ? defaultReader : (): PromptReader => this.reader as PromptReader);
+    const canReopenReader = this.reader === undefined || this.readerFactory !== undefined;
     let reader = createReader();
     let interrupted = false;
     let restartRequested = false;
@@ -111,6 +112,7 @@ export class AgentCLI {
           this.ui.render("No provider configured. Run /provider to set up your LLM provider.");
           continue;
         }
+        if (canReopenReader) reader.close();
         this.terminalState.startSpinner("Working...");
         try {
           const response = await this.orchestrator.process(input);
@@ -119,6 +121,7 @@ export class AgentCLI {
           this.ui.render(`Request failed: ${error instanceof Error ? error.message : String(error)}`);
         } finally {
           this.terminalState.stopSpinner();
+          if (canReopenReader && !interrupted) reader = createReader();
         }
       }
     } finally {

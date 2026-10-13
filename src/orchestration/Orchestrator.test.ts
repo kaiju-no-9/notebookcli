@@ -8,6 +8,7 @@ import { FakeLLM } from "../agent/FakeLLM.js";
 import type { GuardrailResult } from "../guardrails/types/GuardrailResult.js";
 import { Orchestrator, type AgentService, type GuardrailService, type ResearchAgentService, type StreamingService, type SupervisorService } from "./Orchestrator.js";
 import { RouteDecision, type ClassificationResult } from "./Supervisor.js";
+import type { RunLimits } from "../config/RunLimits.js";
 
 function agentResult(response: string): AgentResult {
   return { response, steps: 1, toolCalls: [], mode: AgentMode.ACT };
@@ -73,6 +74,26 @@ describe("Orchestrator", (): void => {
     expect(order).toEqual(["stream", "output"]);
     expect(outputGuardSawDeliveredTokens).toBe(0);
     expect(delivered).toEqual(["Hello", " there"]);
+  });
+
+  it("shares one run context across classifiers, routing, streaming, and output checks", async (): Promise<void> => {
+    const contexts: unknown[] = [];
+    const runLimits: RunLimits = { maxLLMRequests: 8, maxToolInvocations: 8, maxDurationMs: 10_000, maxTokens: 10_000, maxOutputTokens: 128, maxRetries: 0, maxRetryDelayMs: 0 };
+    const contextGuard: GuardrailService = { check: async (context): Promise<GuardrailResult> => {
+      contexts.push(context.runContext);
+      return { allowed: true, reason: "ok", confidence: 1, stage: "test" };
+    } };
+    const orchestrator = new Orchestrator(
+      emptyProvider(), { stream: async (_messages, _onToken, runContext): Promise<string> => { contexts.push(runContext); return "ok"; } },
+      { run: async (): Promise<AgentResult> => agentResult("unused") },
+      { run: async (): Promise<ResearchBrief> => ({ summary: "", keyFindings: [], sources: [] }) },
+      contextGuard, contextGuard,
+      { classify: async (_input, _history, runContext): Promise<ClassificationResult> => { contexts.push(runContext); return { route: RouteDecision.DIRECT, reasoning: "", confidence: 1 }; } },
+      undefined, undefined, [], undefined, runLimits,
+    );
+    await orchestrator.process("answer directly");
+    expect(contexts).toHaveLength(4);
+    expect(contexts.every((context): boolean => context === contexts[0] && context !== undefined)).toBe(true);
   });
 
   it("routes CODE_ONLY through Agent and accumulates conversation history", async (): Promise<void> => {

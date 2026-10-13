@@ -1,6 +1,9 @@
 export enum ErrorKind {
   AUTH_ERROR = "AUTH_ERROR",
   RATE_LIMIT_ERROR = "RATE_LIMIT_ERROR",
+  SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE",
+  QUOTA_EXCEEDED = "QUOTA_EXCEEDED",
+  BUDGET_ERROR = "BUDGET_ERROR",
   NETWORK_ERROR = "NETWORK_ERROR",
   TIMEOUT_ERROR = "TIMEOUT_ERROR",
   SAFETY_ERROR = "SAFETY_ERROR",
@@ -21,6 +24,7 @@ export interface ErrorInfo {
   readonly originalMessage: string;
   readonly stack?: string;
   readonly retryable: boolean;
+  readonly retryAfterMs?: number;
   readonly details?: Record<string, unknown>;
 }
 
@@ -34,6 +38,9 @@ interface ErrorFacts {
 const USER_MESSAGES: Record<ErrorKind, string> = {
   [ErrorKind.AUTH_ERROR]: "Authentication failed. Check your credentials.",
   [ErrorKind.RATE_LIMIT_ERROR]: "The service rate limit was reached.",
+  [ErrorKind.SERVICE_UNAVAILABLE]: "The AI provider is temporarily unavailable.",
+  [ErrorKind.QUOTA_EXCEEDED]: "The provider quota is exhausted. Check the provider plan or quota reset time.",
+  [ErrorKind.BUDGET_ERROR]: "The run stopped because it reached a configured safety or usage limit.",
   [ErrorKind.NETWORK_ERROR]: "A network connection error occurred.",
   [ErrorKind.TIMEOUT_ERROR]: "The operation timed out.",
   [ErrorKind.SAFETY_ERROR]: "The request was blocked by a safety policy.",
@@ -50,6 +57,7 @@ const USER_MESSAGES: Record<ErrorKind, string> = {
 
 const RETRYABLE_KINDS: ReadonlySet<ErrorKind> = new Set([
   ErrorKind.RATE_LIMIT_ERROR,
+  ErrorKind.SERVICE_UNAVAILABLE,
   ErrorKind.NETWORK_ERROR,
   ErrorKind.TIMEOUT_ERROR,
 ]);
@@ -76,11 +84,13 @@ export class ErrorTranslator {
     const facts = ErrorTranslator.extractFacts(error);
     const originalMessage = facts.messages.join(" | ") || "Unknown error";
     const kind = ErrorTranslator.classify(facts);
+    const retryAfterMs = ErrorTranslator.extractRetryAfter(error);
     const info: ErrorInfo = {
       kind,
       message: USER_MESSAGES[kind],
       originalMessage,
-      retryable: RETRYABLE_KINDS.has(kind),
+      retryable: RETRYABLE_KINDS.has(kind) && kind !== ErrorKind.QUOTA_EXCEEDED,
+      ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
     };
 
     if (facts.stack !== undefined) {
@@ -88,6 +98,35 @@ export class ErrorTranslator {
     }
 
     return info;
+  }
+
+  private static extractRetryAfter(error: unknown): number | undefined {
+    const messages: string[] = [];
+    const seen = new WeakSet<object>();
+    const queue: unknown[] = [error];
+    for (let index = 0; index < queue.length && index < 100; index += 1) {
+      const current: unknown = queue[index];
+      if (typeof current === "string") {
+        messages.push(current);
+        continue;
+      }
+      if (typeof current !== "object" || current === null || seen.has(current)) continue;
+      seen.add(current);
+      const retryMs = ErrorTranslator.readProperty(current, "retryAfterMs");
+      if (typeof retryMs === "number" && Number.isFinite(retryMs) && retryMs >= 0) return retryMs;
+      const retryDelay = ErrorTranslator.readProperty(current, "retryDelay");
+      if (typeof retryDelay === "string") {
+        const parsed = /^(\d+(?:\.\d+)?)s$/.exec(retryDelay.trim());
+        if (parsed?.[1] !== undefined) return Number(parsed[1]) * 1000;
+      }
+      for (const key of ERROR_PROPERTY_KEYS) {
+        const child = ErrorTranslator.readProperty(current, key);
+        if (child !== undefined && child !== current) queue.push(child);
+      }
+      if (Array.isArray(current)) queue.push(...current.slice(0, 20));
+    }
+    const retryText = messages.join(" ").match(/retry in\s+(\d+(?:\.\d+)?)\s*s(?:ec(?:onds?)?)?/i);
+    return retryText?.[1] === undefined ? undefined : Number(retryText[1]) * 1000;
   }
 
   private static extractFacts(error: unknown): ErrorFacts {
@@ -203,11 +242,20 @@ export class ErrorTranslator {
       patterns.some((pattern) => pattern.test(text));
 
     // Specific codes and status values take precedence over broad message matches.
+    if (hasCode("BUDGET_ERROR") || hasText(/runbudgeterror/, /run stopped:/)) {
+      return ErrorKind.BUDGET_ERROR;
+    }
     if (hasStatus(408) || hasCode("ETIMEDOUT", "ESOCKETTIMEDOUT", "DEADLINE_EXCEEDED") || hasText(/\btime(?:d\s*out|out)\b/, /deadline exceeded/)) {
       return ErrorKind.TIMEOUT_ERROR;
     }
+    if (hasText(/quota exceeded/, /exceeded.*quota/, /per.day quota/, /daily quota/, /free.tier.*quota/)) {
+      return ErrorKind.QUOTA_EXCEEDED;
+    }
     if (hasStatus(429) || hasCode("RESOURCE_EXHAUSTED") || hasText(/rate.?limit/, /too many requests/)) {
       return ErrorKind.RATE_LIMIT_ERROR;
+    }
+    if (hasStatus(500, 502, 503, 504) || hasCode("UNAVAILABLE", "INTERNAL")) {
+      return ErrorKind.SERVICE_UNAVAILABLE;
     }
     if (hasStatus(401) || hasCode("UNAUTHENTICATED") || hasText(/unauthori[sz]ed/, /authentication failed/, /invalid api key/, /invalid credentials/)) {
       return ErrorKind.AUTH_ERROR;

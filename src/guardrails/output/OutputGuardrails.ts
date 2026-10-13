@@ -5,6 +5,7 @@ import { SecretScanner } from "../types/SecretScanner.js";
 import type { LLMProvider } from "../../providers/LLMProvider.js";
 import { OpenRouterConfig } from "../../providers/OpenRouterConfig.js";
 import { OUTPUT_GUARDRAIL_PROMPT } from "./OutputGuardrailPrompt.js";
+import { RunBudgetError } from "../../utils/RunContext.js";
 
 const CLASSIFICATION_SCHEMA = z.object({
   safe: z.boolean(),
@@ -27,6 +28,7 @@ export class OutputGuardrails {
   public check(output: string, context?: GuardrailContext): Promise<GuardrailResult>;
   public async check(outputOrContext: string | GuardrailContext, _context?: GuardrailContext): Promise<GuardrailResult> {
     const output = typeof outputOrContext === "string" ? outputOrContext : outputOrContext.userMessage;
+    const runContext = typeof outputOrContext === "string" ? _context?.runContext : outputOrContext.runContext;
     if (SecretScanner.containsSecrets(output)) {
       return { allowed: false, reason: "Secret in output", confidence: 1, stage: "secret_scan" };
     }
@@ -40,6 +42,7 @@ export class OutputGuardrails {
           responseMimeType: "application/json",
           responseSchema: z.toJSONSchema(CLASSIFICATION_SCHEMA, { target: "draft-07" }),
         },
+        runContext,
       );
       if (response.text === null) {
         throw new Error("Guardrail classifier returned no JSON response");
@@ -51,7 +54,8 @@ export class OutputGuardrails {
         confidence: classification.confidence,
         stage: "llm_classifier",
       };
-    } catch {
+    } catch (error: unknown) {
+      if (error instanceof RunBudgetError) throw error;
       await this.warn("Output guardrail classifier failed open", { stage: "llm_classifier" });
       return { allowed: true, reason: "Guardrail check failed; allowed through", confidence: 0, stage: "llm_fail_open" };
     }

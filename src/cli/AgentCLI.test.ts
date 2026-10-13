@@ -82,6 +82,32 @@ describe("AgentCLI", (): void => {
     expect(outputs).toContain("recovered");
   });
 
+  it("releases the REPL reader while the orchestrator may request approval", async (): Promise<void> => {
+    const readers: QueueReader[] = [];
+    let callSawReleasedReader = false;
+    const cli = new AgentCLI(
+      { process: async (): Promise<string> => {
+        callSawReleasedReader = readers[0]?.closed === true;
+        return "completed";
+      } },
+      new AgentUI((): void => undefined),
+      new TerminalState(),
+      undefined,
+      undefined,
+      { providerConfigured: true },
+      (): PromptReader => {
+        const reader = new QueueReader(readers.length === 0 ? ["task"] : ["quit"]);
+        readers.push(reader);
+        return reader;
+      },
+    );
+    await cli.start();
+    expect(callSawReleasedReader).toBe(true);
+    expect(readers).toHaveLength(2);
+    expect(readers[0]?.closed).toBe(true);
+    expect(readers[1]?.closed).toBe(true);
+  });
+
   it("runs the guarded orchestrator pipeline through to terminal output", async (): Promise<void> => {
     const order: string[] = [];
     const outputs: string[] = [];

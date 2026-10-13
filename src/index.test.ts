@@ -6,9 +6,10 @@ describe("CLI entry point", (): void => {
   it("exports without starting the application and parses a model override", (): void => {
     const program = createProgram();
     program.exitOverride();
-    program.parse(["node", "oden", "--provider", "gemini", "--model", "gemini-test-model"]);
+    program.parse(["node", "oden", "--provider", "gemini", "--model", "gemini-test-model", "--workspace", "/tmp/oden-test"]);
     expect(program.opts<{ provider: string; model: string }>().provider).toBe("gemini");
     expect(program.opts<{ provider: string; model: string }>().model).toBe("gemini-test-model");
+    expect(program.opts<{ workspace: string }>().workspace).toBe("/tmp/oden-test");
     expect(typeof createApplication).toBe("function");
     expect(OpenRouterConfig.DEFAULT_MODEL).toBe("openrouter/free");
     const defaultProgram = createProgram();

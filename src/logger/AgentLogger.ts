@@ -1,5 +1,3 @@
-import { createLogger, format, transports, type Logger } from "winston";
-
 const SECRET_PATTERNS: readonly RegExp[] = [
   /AIza[0-9A-Za-z_-]{35}/g,
   /AQ\.[A-Za-z0-9._-]{8,}/g,
@@ -10,82 +8,39 @@ const SECRET_PATTERNS: readonly RegExp[] = [
 ];
 
 type LogMeta = Record<string, unknown>;
+type LogLevel = "debug" | "info" | "warn" | "error";
+
+const LEVEL_WEIGHT: Record<LogLevel, number> = { debug: 10, info: 20, warn: 30, error: 40 };
+let currentLevel: LogLevel = "info";
 
 function redactString(value: string): string {
-  return SECRET_PATTERNS.reduce(
-    (redacted: string, pattern: RegExp): string => redacted.replace(pattern, "[REDACTED]"),
-    value,
-  );
+  return SECRET_PATTERNS.reduce((redacted: string, pattern: RegExp): string => redacted.replace(pattern, "[REDACTED]"), value);
 }
 
 function sanitize(value: unknown, seen: WeakSet<object>, depth: number): unknown {
-  if (typeof value === "string") {
-    return redactString(value);
-  }
-  if (typeof value !== "object" || value === null) {
-    return value;
-  }
-  if (seen.has(value)) {
-    return "[Circular]";
-  }
-  if (depth >= 10) {
-    return "[MaxDepth]";
-  }
+  if (typeof value === "string") return redactString(value);
+  if (typeof value !== "object" || value === null) return value;
+  if (seen.has(value)) return "[Circular]";
+  if (depth >= 10) return "[MaxDepth]";
   seen.add(value);
-  if (Array.isArray(value)) {
-    return value.map((item: unknown): unknown => sanitize(item, seen, depth + 1));
-  }
+  if (Array.isArray(value)) return value.map((item: unknown): unknown => sanitize(item, seen, depth + 1));
   const sanitized: LogMeta = {};
   try {
-    for (const [key, item] of Object.entries(value)) {
-      sanitized[key] = sanitize(item, seen, depth + 1);
-    }
+    for (const [key, item] of Object.entries(value)) sanitized[key] = sanitize(item, seen, depth + 1);
   } catch {
     return "[Unserializable]";
   }
   return sanitized;
 }
 
-function safeJson(value: unknown): string {
-  try {
-    return JSON.stringify(value) ?? "{}";
-  } catch {
-    return "[Unserializable metadata]";
-  }
+function formatLog(level: LogLevel, message: string, meta?: LogMeta): string {
+  const safeMessage = redactString(message);
+  const safeMeta = meta === undefined ? {} : sanitize(meta, new WeakSet<object>(), 0);
+  const suffix = typeof safeMeta === "object" && safeMeta !== null && Object.keys(safeMeta).length > 0
+    ? ` ${JSON.stringify(safeMeta)}`
+    : "";
+  return `[${new Date().toISOString()}] [${level.toUpperCase()}] ${safeMessage}${suffix}\n`;
 }
-
-let logger: Logger | undefined;
-let currentLevel: "debug" | "info" | "warn" | "error" = "info";
-
-function getLogger(): Logger {
-  if (logger === undefined) {
-    logger = createLogger({
-      level: currentLevel,
-      format: format.combine(
-        format.timestamp({ format: "YYYY-MM-DDTHH:mm:ss.SSSZ" }),
-        format.printf((info): string => {
-          const level = String(info.level ?? "info").toUpperCase();
-          const message = typeof info.message === "string" ? redactString(info.message) : "[Invalid log message]";
-          const meta: LogMeta = {};
-          for (const [key, value] of Object.entries(info)) {
-            if (key !== "level" && key !== "message" && key !== "timestamp") {
-              meta[key] = sanitize(value, new WeakSet<object>(), 0);
-            }
-          }
-          const suffix = Object.keys(meta).length > 0 ? ` ${safeJson(meta)}` : "";
-          return `[${String(info.timestamp)}] [${level}] ${message}${suffix}`;
-        }),
-      ),
-      transports: [new transports.Console({ stderrLevels: ["error", "warn", "info", "debug"] })],
-      exitOnError: false,
-    });
-  }
-  return logger;
-}
-
-// Initialize Winston before the first log call so cold-start setup does not
-// block an application's request or the first guarded operation.
-getLogger();
 
 export class AgentLogger {
   public static info(message: string, meta?: LogMeta): void {
@@ -104,26 +59,17 @@ export class AgentLogger {
     AgentLogger.write("debug", message, meta);
   }
 
-  public static setLevel(level: "debug" | "info" | "warn" | "error"): void {
-    try {
-      currentLevel = level;
-      if (logger !== undefined) {
-        logger.level = level;
-      }
-    } catch {
-      // Logging configuration must never crash an application.
-    }
+  public static setLevel(level: LogLevel): void {
+    currentLevel = level;
   }
 
-  private static write(level: "info" | "warn" | "error" | "debug", message: string, meta?: LogMeta): void {
+  private static write(level: LogLevel, message: string, meta?: LogMeta): void {
+    if (LEVEL_WEIGHT[level] < LEVEL_WEIGHT[currentLevel]) return;
     try {
-      if (typeof message !== "string") {
-        getLogger().log({ level, message: "[Invalid log message]" });
-        return;
-      }
-      getLogger().log({ level, message, meta: meta ?? {} });
+      const output = formatLog(level, typeof message === "string" ? message : "[Invalid log message]", meta);
+      process.stderr.write(output);
     } catch {
-      // Logger failures are intentionally swallowed to protect application flow.
+      // Logging must not interrupt application behavior.
     }
   }
 }

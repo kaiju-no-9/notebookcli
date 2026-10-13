@@ -4,6 +4,8 @@ import type { FunctionCall } from "../providers/LLMResponse.js";
 import type { ToolDefinition } from "../tools/ToolRegistry.js";
 import type { Message } from "./Message.js";
 import { RESEARCH_AGENT_SYSTEM_PROMPT } from "./ResearchAgentSystemPrompt.js";
+import type { RunContext } from "../utils/RunContext.js";
+import { RunBudgetError } from "../utils/RunContext.js";
 
 export interface ResearchBrief {
   readonly summary: string;
@@ -66,20 +68,21 @@ export class ResearchAgent {
     private readonly searchTool: ToolDefinition,
   ) {}
 
-  public async run(query: string): Promise<ResearchBrief> {
+  public async run(query: string, runContext?: RunContext): Promise<ResearchBrief> {
     const messages: Message[] = [
       { role: "user", parts: [{ text: RESEARCH_AGENT_SYSTEM_PROMPT }] },
       { role: "user", parts: [{ text: `Research this question: ${query}` }] },
     ];
     const searchOutputs: string[] = [];
     for (let step = 0; step < MAX_RESEARCH_STEPS; step += 1) {
-      const response = await this.provider.generateContent(messages, [this.searchTool]);
+      const response = await this.provider.generateContent(messages, [this.searchTool], undefined, runContext);
       const calls = response.functionCalls ?? [];
       if (calls.length === 0) {
         return briefFromText(response.text ?? "", searchOutputs);
       }
       messages.push(modelMessage(response.text, calls));
       for (const call of calls) {
+        runContext?.recordToolInvocation();
         let result: string;
         if (call.name !== this.searchTool.name) {
           result = `Error: ResearchAgent is restricted to the '${this.searchTool.name}' tool`;
@@ -87,6 +90,7 @@ export class ResearchAgent {
           try {
             result = await this.searchTool.execute(call.args);
           } catch (error: unknown) {
+            if (error instanceof RunBudgetError) throw error;
             result = `Search tool failed: ${error instanceof Error ? error.message : String(error)}`;
           }
         }

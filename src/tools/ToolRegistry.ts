@@ -1,4 +1,5 @@
 import type { ZodType } from "zod";
+import type { ToolExecutionContext } from "./Approval.js";
 
 // Zod v4 exports ZodType; the phase example’s ZodSchema type is not exported.
 
@@ -6,7 +7,7 @@ export interface ToolDefinition {
   readonly name: string;
   readonly description: string;
   readonly parameters: ZodType;
-  readonly execute: (args: unknown) => Promise<string>;
+  readonly execute: (args: unknown, context?: ToolExecutionContext) => Promise<string>;
 }
 
 export class ToolRegistry {

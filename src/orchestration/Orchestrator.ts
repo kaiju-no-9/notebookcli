@@ -7,21 +7,23 @@ import type { GuardrailResult } from "../guardrails/types/GuardrailResult.js";
 import type { LLMProvider } from "../providers/LLMProvider.js";
 import type { ClassificationResult } from "./Supervisor.js";
 import { SecretScanner } from "../guardrails/types/SecretScanner.js";
+import { RunBudgetError, RunContext } from "../utils/RunContext.js";
+import type { RunLimits } from "../config/RunLimits.js";
 
 export interface AgentService {
-  run(input: string, systemPrompt: string, maxSteps?: number): Promise<AgentResult>;
+  run(input: string, systemPrompt: string, maxSteps?: number, runContext?: RunContext): Promise<AgentResult>;
 }
 
 export interface ResearchAgentService {
-  run(query: string): Promise<ResearchBrief>;
+  run(query: string, runContext?: RunContext): Promise<ResearchBrief>;
 }
 
 export interface StreamingService {
-  stream(messages: Message[], onToken: (token: string) => void): Promise<string>;
+  stream(messages: Message[], onToken: (token: string) => void, runContext?: RunContext): Promise<string>;
 }
 
 export interface SupervisorService {
-  classify(input: string, history: Message[]): Promise<ClassificationResult>;
+  classify(input: string, history: Message[], runContext?: RunContext): Promise<ClassificationResult>;
 }
 
 export interface GuardrailService {
@@ -74,6 +76,7 @@ export class Orchestrator {
     private readonly directMemoryTools?: DirectMemoryTools,
     initialHistory: readonly Message[] = [],
     private readonly persistHistory?: HistoryPersistence,
+    private readonly runLimits?: RunLimits,
   ) {
     this.history = [...structuredClone(initialHistory)];
   }
@@ -87,8 +90,10 @@ export class Orchestrator {
   }
 
   public async process(input: string): Promise<string> {
+    const runContext = this.runLimits === undefined ? undefined : new RunContext(this.runLimits);
     const memoryIntent = parseDirectMemoryIntent(input);
     if (memoryIntent !== undefined && this.directMemoryTools !== undefined) {
+      runContext?.recordToolInvocation();
       const response = await this.executeDirectMemoryIntent(memoryIntent);
       this.history.push(
         { role: "user", parts: [{ text: input }] },
@@ -99,7 +104,7 @@ export class Orchestrator {
 
     let inputCheck: GuardrailResult;
     try {
-      inputCheck = await this.inputGuardrails.check({ userMessage: input, conversationHistory: this.getHistory() });
+      inputCheck = await this.inputGuardrails.check({ userMessage: input, conversationHistory: this.getHistory(), runContext });
     } catch (error: unknown) {
       return `I can't process that because the input safety check failed: ${this.errorMessage(error)}`;
     }
@@ -109,8 +114,9 @@ export class Orchestrator {
 
     let classification: ClassificationResult;
     try {
-      classification = await this.supervisor.classify(input, this.getHistory());
-    } catch {
+      classification = await this.supervisor.classify(input, this.getHistory(), runContext);
+    } catch (error: unknown) {
+      if (error instanceof RunBudgetError) return `I couldn't complete the request: ${error.message}`;
       classification = { route: "CODE_ONLY", reasoning: "Supervisor failed; using coding agent fallback.", confidence: 0 };
     }
     if (isMemoryToolRequest(input)) {
@@ -127,7 +133,7 @@ export class Orchestrator {
         try {
           response = await this.streaming.stream(
             [...this.getHistory(), userMessage],
-            (token: string): void => { streamedTokens.push(token); },
+            (token: string): void => { streamedTokens.push(token); }, runContext,
           );
         } catch (error: unknown) {
           response = `I couldn't complete a direct response: ${this.errorMessage(error)}`;
@@ -139,28 +145,37 @@ export class Orchestrator {
         this.callbacks?.onStatus?.("Researching...");
         let brief: ResearchBrief;
         try {
-          brief = await this.researchAgent.run(input);
-        } catch {
+          brief = await this.researchAgent.run(input, runContext);
+        } catch (error: unknown) {
+          if (error instanceof RunBudgetError) {
+            response = `I couldn't complete the request: ${error.message}`;
+            break;
+          }
           this.callbacks?.onStatus?.("Research failed; continuing with coding agent...");
-          response = await this.runCodingAgent(input);
+          response = await this.runCodingAgent(input, runContext);
           break;
         }
         this.callbacks?.onStatus?.("Starting coding agent with research...");
-        response = await this.runCodingAgent(this.withResearch(input, brief));
+        response = await this.runCodingAgent(this.withResearch(input, brief), runContext);
         break;
       }
       case "CODE_ONLY":
       default:
         this.callbacks?.onStatus?.("Starting coding agent...");
-        response = await this.runCodingAgent(input);
+        response = await this.runCodingAgent(input, runContext);
         break;
     }
 
     let outputCheck: GuardrailResult;
     try {
-      outputCheck = await this.outputGuardrails.check({ userMessage: response });
+      outputCheck = await this.outputGuardrails.check({ userMessage: response, runContext });
     } catch (error: unknown) {
-      outputCheck = { allowed: false, reason: `Output safety check failed: ${this.errorMessage(error)}`, confidence: 1, stage: "guard_error" };
+      if (error instanceof RunBudgetError) {
+        response = `${response}\n\n[Output classifier skipped: ${error.message}]`;
+        outputCheck = { allowed: true, reason: "Budget reached before output check", confidence: 0, stage: "budget" };
+      } else {
+        outputCheck = { allowed: false, reason: `Output safety check failed: ${this.errorMessage(error)}`, confidence: 1, stage: "guard_error" };
+      }
     }
     if (!outputCheck.allowed) {
       response = `Response was filtered: ${outputCheck.reason}`;
@@ -201,9 +216,9 @@ export class Orchestrator {
     }
   }
 
-  private async runCodingAgent(input: string): Promise<string> {
+  private async runCodingAgent(input: string, runContext?: RunContext): Promise<string> {
     try {
-      return (await this.agent.run(input, CODING_SYSTEM_PROMPT)).response;
+      return (await this.agent.run(input, CODING_SYSTEM_PROMPT, undefined, runContext)).response;
     } catch (error: unknown) {
       return `I couldn't complete the coding request: ${this.errorMessage(error)}`;
     }

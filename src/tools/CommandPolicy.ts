@@ -71,8 +71,28 @@ function classifySegment(segment: string): CommandClassification {
   if (baseCommand === "git" && /(?:^|\s)push\b[^\n]*(?:--force\b|-f\b)|(?:^|\s)reset\b[^\n]*(?:--hard\b)/i.test(segment)) {
     return { action: "BLOCK", reason: "Force push and hard reset are blocked" };
   }
+  if (baseCommand === "git") {
+    const subcommand = argumentsText.trim().split(/\s+/, 1)[0]?.toLowerCase() ?? "";
+    const subcommandArgs = argumentsText.trim().slice(subcommand.length).trim();
+    const branchListing = subcommand === "branch" && (subcommandArgs.length === 0 || /^(?:-a|-r|-v|-vv|--list)(?:\s|$)/.test(subcommandArgs));
+    const remoteInspection = subcommand === "remote" && (subcommandArgs.length === 0 || /^(?:-v|--verbose|show)(?:\s|$)/.test(subcommandArgs));
+    const readOnlyGit = new Set(["status", "diff", "log", "show", "rev-parse", "ls-files"]);
+    const mutatingGit = new Set(["add", "commit", "push", "pull", "fetch", "merge", "rebase", "cherry-pick", "tag", "branch", "clean", "checkout", "switch", "restore", "reset", "stash", "config", "rm", "mv", "worktree", "submodule", "remote"]);
+    if (mutatingGit.has(subcommand) && !(branchListing || remoteInspection)) {
+      return { action: "CONFIRM", reason: "Git operations that change repository state or remote data require confirmation" };
+    }
+    if (subcommand.length > 0 && !readOnlyGit.has(subcommand) && !mutatingGit.has(subcommand)) {
+      return { action: "CONFIRM", reason: `Git operation '${subcommand}' requires confirmation` };
+    }
+  }
   if (baseCommand === "sudo" || (baseCommand === "chmod" && /(?:^|\s)777(?:\s|$)/.test(argumentsText))) {
     return { action: "CONFIRM", reason: `${baseCommand} requires confirmation` };
+  }
+  if ((baseCommand === "npm" && /^(?:install|ci|uninstall|update|add|remove)\b/i.test(argumentsText))
+    || (baseCommand === "bun" && /^(?:install|add|remove)\b/i.test(argumentsText))
+    || (baseCommand === "pip" && /^install\b/i.test(argumentsText))
+    || baseCommand === "npx") {
+    return { action: "CONFIRM", reason: "Package installation or modification requires confirmation" };
   }
 
   const tokensFolded = tokens.map((part: string): string => part.toLowerCase());
