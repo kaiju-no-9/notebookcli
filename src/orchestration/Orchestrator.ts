@@ -33,6 +33,8 @@ export interface DirectMemoryTools {
   search(query: string): Promise<string>;
 }
 
+export type HistoryPersistence = (history: readonly Message[]) => Promise<void>;
+
 type MemoryIntent =
   | { readonly kind: "save"; readonly value: string }
   | { readonly kind: "search"; readonly query: string };
@@ -58,7 +60,7 @@ function parseDirectMemoryIntent(input: string): MemoryIntent | undefined {
 }
 
 export class Orchestrator {
-  private readonly history: Message[] = [];
+  private readonly history: Message[];
 
   public constructor(
     private readonly provider: LLMProvider,
@@ -70,11 +72,18 @@ export class Orchestrator {
     private readonly supervisor: SupervisorService,
     private readonly callbacks?: RunCallbacks,
     private readonly directMemoryTools?: DirectMemoryTools,
+    initialHistory: readonly Message[] = [],
+    private readonly persistHistory?: HistoryPersistence,
   ) {
+    this.history = [...structuredClone(initialHistory)];
   }
 
   public getHistory(): Message[] {
     return structuredClone(this.history);
+  }
+
+  public setHistory(history: readonly Message[]): void {
+    this.history.splice(0, this.history.length, ...structuredClone(history));
   }
 
   public async process(input: string): Promise<string> {
@@ -85,7 +94,7 @@ export class Orchestrator {
         { role: "user", parts: [{ text: input }] },
         { role: "model", parts: [{ text: response }] },
       );
-      return response;
+      return this.saveHistoryOrWarn(response);
     }
 
     let inputCheck: GuardrailResult;
@@ -163,7 +172,16 @@ export class Orchestrator {
     }
 
     this.history.push(userMessage, { role: "model", parts: [{ text: response }] });
-    return response;
+    return this.saveHistoryOrWarn(response);
+  }
+
+  private async saveHistoryOrWarn(response: string): Promise<string> {
+    try {
+      await this.persistHistory?.(this.getHistory());
+      return response;
+    } catch (error: unknown) {
+      return `${response}\n\n[Session history could not be saved: ${this.errorMessage(error)}]`;
+    }
   }
 
   private async executeDirectMemoryIntent(intent: MemoryIntent): Promise<string> {

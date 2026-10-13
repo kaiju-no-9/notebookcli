@@ -161,14 +161,15 @@ describe("AgentCLI", (): void => {
     expect(reader.prompts).toEqual(["oden [openrouter/free]> "]);
   });
 
-  it("limits an unconfigured session to provider, status, and help commands", async (): Promise<void> => {
+  it("allows session management without a configured provider", async (): Promise<void> => {
     let orchestratorCalls = 0;
     const outputs: string[] = [];
-    const reader = new QueueReader(["do a task", "/web", "/status", "/help", "quit"]);
+    const reader = new QueueReader(["do a task", "/web", "/sessions", "/status", "/help", "quit"]);
     const router = new SlashCommandRouter();
     router.register({ name: "web", description: "Configure web", execute: async () => ({ output: "web", restart: false }) });
     router.register({ name: "status", description: "Show status", execute: async () => ({ output: "status", restart: false }) });
     router.register({ name: "help", description: "Show help", execute: async () => ({ output: "help", restart: false }) });
+    router.register({ name: "sessions", description: "Manage sessions", execute: async () => ({ output: "sessions", restart: false }) });
     const cli = new AgentCLI(
       { process: async (): Promise<string> => { orchestratorCalls += 1; return "unexpected"; } },
       new AgentUI((text: string): void => { outputs.push(text); }),
@@ -184,6 +185,7 @@ describe("AgentCLI", (): void => {
     expect(outputs.filter((output): boolean => output.includes("No provider configured"))).toHaveLength(2);
     expect(outputs).toContain("status");
     expect(outputs).toContain("help");
+    expect(outputs).toContain("sessions");
   });
 
   it("returns restart when a slash command requests a pipeline rebuild", async (): Promise<void> => {
