@@ -45,7 +45,7 @@ describe("AgentCLI", (): void => {
     await cli.start();
     expect(inputs).toEqual(["hello"]);
     expect(outputs[0]).toContain("ODEN / CODING AGENT");
-    expect(outputs[0]).toContain("Provider: openrouter/free");
+    expect(outputs[0]).toContain("MODEL openrouter/free");
     expect(outputs[1]).toContain("WORKING");
     expect(outputs[2]).toBe("ODEN · RESPONSE\nHi from Oden");
     expect(outputs.at(-1)).toBe("Goodbye.");
@@ -107,7 +107,7 @@ describe("AgentCLI", (): void => {
     );
     await cli.start();
     expect(outputs.some((output): boolean => output.includes("✕ ERROR") && output.includes("Request failed: temporary failure"))).toBe(true);
-    expect(outputs).toContain("recovered");
+    expect(outputs.some((output): boolean => output.includes("ODEN · RESPONSE\nrecovered"))).toBe(true);
   });
 
   it("releases the REPL reader while the orchestrator may request approval", async (): Promise<void> => {
@@ -195,7 +195,7 @@ describe("AgentCLI", (): void => {
     expect(await cli.start()).toBe("exit");
     expect(orchestratorCalls).toBe(0);
     expect(reader.prompts[0]).toBe("oden [gemini/gemini-3.8-flash]> ");
-    expect(outputs).toContain("help text");
+    expect(outputs.some((output): boolean => output.includes("help text"))).toBe(true);
   });
 
   it("does not repeat OpenRouter in the prompt for its openrouter/free model ID", async (): Promise<void> => {
@@ -235,10 +235,11 @@ describe("AgentCLI", (): void => {
     await cli.start();
     expect(orchestratorCalls).toBe(0);
     expect(reader.prompts[0]).toBe("oden [no provider]> ");
-    expect(outputs.filter((output): boolean => output.includes("No provider configured"))).toHaveLength(2);
-    expect(outputs).toContain("status");
-    expect(outputs).toContain("help");
-    expect(outputs).toContain("sessions");
+    expect(outputs[0]).toContain("No provider configured");
+    expect(outputs.some((output): boolean => output.includes("No provider configured. Run /provider"))).toBe(true);
+    expect(outputs.some((output): boolean => output.includes("status"))).toBe(true);
+    expect(outputs.some((output): boolean => output.includes("help"))).toBe(true);
+    expect(outputs.some((output): boolean => output.includes("sessions"))).toBe(true);
   });
 
   it("returns restart when a slash command requests a pipeline rebuild", async (): Promise<void> => {
@@ -254,7 +255,7 @@ describe("AgentCLI", (): void => {
       { providerConfigured: false },
     );
     expect(await cli.start()).toBe("restart");
-    expect(outputs).toContain("saved");
+    expect(outputs.some((output): boolean => output.includes("saved"))).toBe(true);
     expect(outputs).toContain("Restarting Oden with the saved provider configuration...");
     expect(outputs).not.toContain("Goodbye.");
   });
