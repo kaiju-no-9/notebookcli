@@ -44,12 +44,11 @@ describe("AgentCLI", (): void => {
     );
     await cli.start();
     expect(inputs).toEqual(["hello"]);
-    expect(outputs).toEqual([
-      "Oden is ready. Enter 'exit' or 'quit' to leave.",
-      "\n[Oden] Working on your request...\n",
-      "Hi from Oden",
-      "Goodbye.",
-    ]);
+    expect(outputs[0]).toContain("ODEN / CODING AGENT");
+    expect(outputs[0]).toContain("Provider: openrouter/free");
+    expect(outputs[1]).toContain("WORKING");
+    expect(outputs[2]).toBe("ODEN · RESPONSE\nHi from Oden");
+    expect(outputs.at(-1)).toBe("Goodbye.");
     expect(reader.closed).toBe(true);
     expect(state.currentSpinnerMessage).toBeUndefined();
   });
@@ -71,15 +70,11 @@ describe("AgentCLI", (): void => {
 
     await cli.start();
 
-    expect(output).toEqual([
-      "Oden is ready. Enter 'exit' or 'quit' to leave.",
-      "\n[Oden] Working on your request...\n",
-      "\n[Oden] Searching files...\n",
-      "The answer is ",
-      "42.",
-      "\n",
-      "Goodbye.",
-    ]);
+    expect(output[0]).toContain("ODEN / CODING AGENT");
+    expect(output[1]).toContain("WORKING");
+    expect(output[2]).toContain("Searching files");
+    expect(output[3]).toBe("\nODEN · RESPONSE\n");
+    expect(output.slice(4)).toEqual(["The answer is ", "42.", "\n", "Goodbye."]);
   });
 
   it("handles quit and skips blank input", async (): Promise<void> => {
@@ -111,7 +106,7 @@ describe("AgentCLI", (): void => {
       new QueueReader(["first", "second", "quit"]),
     );
     await cli.start();
-    expect(outputs).toContain("Request failed: temporary failure");
+    expect(outputs.some((output): boolean => output.includes("✕ ERROR") && output.includes("Request failed: temporary failure"))).toBe(true);
     expect(outputs).toContain("recovered");
   });
 
@@ -176,12 +171,10 @@ describe("AgentCLI", (): void => {
     await cli.start();
 
     expect(order).toEqual(["input guard", "classification", "stream", "output guard"]);
-    expect(outputs).toEqual([
-      "Oden is ready. Enter 'exit' or 'quit' to leave.",
-      "\n[Oden] Working on your request...\n",
-      "Safe answer",
-      "Goodbye.",
-    ]);
+    expect(outputs[0]).toContain("ODEN / CODING AGENT");
+    expect(outputs[1]).toContain("WORKING");
+    expect(outputs[2]).toBe("ODEN · RESPONSE\nSafe answer");
+    expect(outputs.at(-1)).toBe("Goodbye.");
   });
 
   it("intercepts slash commands and shows the active provider and model in the prompt", async (): Promise<void> => {

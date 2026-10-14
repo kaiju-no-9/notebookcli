@@ -7,7 +7,7 @@ import type { GuardrailResult } from "../guardrails/types/GuardrailResult.js";
 import type { LLMProvider } from "../providers/LLMProvider.js";
 import type { ClassificationResult } from "./Supervisor.js";
 import { SecretScanner } from "../guardrails/types/SecretScanner.js";
-import { RunBudgetError, RunContext } from "../utils/RunContext.js";
+import { RunBudgetError, RunContext, type RunSnapshot } from "../utils/RunContext.js";
 import type { RunLimits } from "../config/RunLimits.js";
 import { SubagentPolicy } from "./SubagentPolicy.js";
 import type { SubagentResult, SubagentTask } from "./SubagentTypes.js";
@@ -97,6 +97,10 @@ export class Orchestrator {
 
   public setHistory(history: readonly Message[]): void {
     this.history.splice(0, this.history.length, ...structuredClone(history));
+  }
+
+  public getLastRunSnapshot(): RunSnapshot | undefined {
+    return this.activeRunContext?.snapshot();
   }
 
   public cancelActiveRun(): void {

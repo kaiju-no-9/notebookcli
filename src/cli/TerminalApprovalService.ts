@@ -1,16 +1,31 @@
 import { stdin } from "node:process";
 import type { ApprovalDecision, ApprovalRequest, ApprovalService } from "../tools/Approval.js";
 
-async function terminalConfirm(message: string, signal: AbortSignal): Promise<boolean> {
-  const { confirm } = await import("@inquirer/prompts");
-  return confirm({ message, default: false }, { signal });
+type ApprovalChoice = "diff" | "action" | "approve" | "reject";
+type ApprovalPrompt = (message: string, signal: AbortSignal, hasDiff: boolean) => Promise<ApprovalChoice>;
+
+async function terminalPrompt(message: string, signal: AbortSignal, hasDiff: boolean): Promise<ApprovalChoice> {
+  const { select } = await import("@inquirer/prompts");
+  const reviewChoices = hasDiff
+    ? [{ name: "Review diff", value: "diff" as const }, { name: "View exact action", value: "action" as const }]
+    : [{ name: "View exact action", value: "action" as const }];
+  return select({
+    message,
+    choices: [
+      ...reviewChoices,
+      { name: "Approve exact action", value: "approve" as const },
+      { name: "Reject", value: "reject" as const },
+    ],
+    loop: false,
+  }, { signal });
 }
 
 export class TerminalApprovalService implements ApprovalService {
   public constructor(
     private readonly isInteractive: () => boolean = (): boolean => stdin.isTTY === true,
-    private readonly prompt: (message: string, signal: AbortSignal) => Promise<boolean> = terminalConfirm,
+    private readonly prompt: ApprovalPrompt = terminalPrompt,
     private readonly timeoutMs: number = 120_000,
+    private readonly showReview: (text: string) => void = (text: string): void => { console.log(text); },
   ) {}
 
   public async requestApproval(request: ApprovalRequest): Promise<ApprovalDecision> {
@@ -18,17 +33,24 @@ export class TerminalApprovalService implements ApprovalService {
     const controller = new AbortController();
     const timer = setTimeout((): void => controller.abort(new Error("Approval prompt timed out.")), this.timeoutMs);
     try {
+      const summary = request.summary ?? request.action;
       const message = [
-        `Approve ${request.category} action?`,
-        `Risk: ${request.risk}.`,
-        `Reason: ${request.reason}`,
-        `Workspace: ${request.workspaceRoot}`,
+        `ODEN APPROVAL REQUIRED · ${request.risk.toUpperCase()} RISK`,
+        `${request.category === "file_write" ? "Change" : "Action"}: ${summary}`,
         `Target: ${request.target}`,
-        `Exact action: ${request.action}`,
+        `Workspace: ${request.workspaceRoot}`,
+        `Reason: ${request.reason}`,
       ].join("\n");
-      return await this.prompt(message, controller.signal)
-        ? { status: "approved" }
-        : { status: "denied", reason: "The action was rejected." };
+      while (true) {
+        const choice = await this.prompt(message, controller.signal, request.preview !== undefined);
+        if (choice === "diff" || choice === "action") {
+          this.showReview(sanitizeTerminalText(choice === "diff" ? request.preview ?? request.action : request.action));
+          continue;
+        }
+        return choice === "approve"
+          ? { status: "approved" }
+          : { status: "denied", reason: "The action was rejected." };
+      }
     } catch (error: unknown) {
       const reason = controller.signal.aborted
         ? "Approval prompt timed out or was interrupted."
@@ -38,4 +60,10 @@ export class TerminalApprovalService implements ApprovalService {
       clearTimeout(timer);
     }
   }
+}
+
+function sanitizeTerminalText(value: string): string {
+  return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, (character): string => {
+    return `\\x${character.charCodeAt(0).toString(16).padStart(2, "0")}`;
+  });
 }

@@ -93,7 +93,7 @@ describe("SessionCommand", (): void => {
 
     const result = await command.execute();
 
-    expect(result.output).toContain("Deleted session session-b");
+    expect(result.output).toContain("Deleted session 'Beta'");
     expect(store.deleted).toEqual(["session-b"]);
     expect(activated?.id).toBe("session-a");
   });

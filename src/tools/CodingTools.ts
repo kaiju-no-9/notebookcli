@@ -72,11 +72,14 @@ function createCodeTool(workspace: WorkspaceContext): ToolDefinition {
       }
       if (exists || workspace.isSensitive(resolvedPath)) {
         if (context?.approvalService === undefined) return `File write denied: approval is unavailable. ${resolvedPath} was not changed.`;
+        const originalContent = exists ? await readFile(resolvedPath, "utf8") : "";
         const request = createApprovalRequest({
           runId: context.runId,
           category: "file_write",
           risk: workspace.isSensitive(resolvedPath) ? "high" : "moderate",
           action: JSON.stringify({ operation: "write_file", path: resolvedPath, content }),
+          summary: `${exists ? "Replace existing file" : "Create sensitive file"} · ${content.split(/\r?\n/).length} lines · ${Buffer.byteLength(content, "utf8")} bytes`,
+          preview: createFileDiff(resolvedPath, originalContent, content),
           target: resolvedPath,
           workspaceRoot: workspace.root,
           reason: workspace.isSensitive(resolvedPath) ? "Writing a sensitive file requires explicit approval" : "Overwriting an existing file requires explicit approval",
@@ -105,6 +108,37 @@ function createCodeTool(workspace: WorkspaceContext): ToolDefinition {
     }
   },
   };
+}
+
+function createFileDiff(filePath: string, originalContent: string, proposedContent: string): string {
+  const original = originalContent.length === 0 ? [] : originalContent.split(/\r?\n/);
+  const proposed = proposedContent.length === 0 ? [] : proposedContent.split(/\r?\n/);
+  let prefix = 0;
+  while (prefix < original.length && prefix < proposed.length && original[prefix] === proposed[prefix]) prefix += 1;
+  let suffix = 0;
+  while (
+    suffix < original.length - prefix
+    && suffix < proposed.length - prefix
+    && original[original.length - suffix - 1] === proposed[proposed.length - suffix - 1]
+  ) suffix += 1;
+
+  const contextStart = Math.max(0, prefix - 3);
+  const oldEnd = Math.min(original.length, original.length - suffix + 3);
+  const newEnd = Math.min(proposed.length, proposed.length - suffix + 3);
+  const diffLines = [
+    `--- a/${path.basename(filePath)}`,
+    `+++ b/${path.basename(filePath)}`,
+    `@@ -${contextStart + 1},${oldEnd - contextStart} +${contextStart + 1},${newEnd - contextStart} @@`,
+    ...original.slice(contextStart, prefix).map((line): string => ` ${line}`),
+    ...original.slice(prefix, original.length - suffix).map((line): string => `-${line}`),
+    ...proposed.slice(prefix, proposed.length - suffix).map((line): string => `+${line}`),
+    ...(suffix > 0 ? original.slice(original.length - suffix, oldEnd).map((line): string => ` ${line}`) : []),
+  ];
+  const maximumLines = 120;
+  if (diffLines.length > maximumLines) {
+    return `${diffLines.slice(0, maximumLines).join("\n")}\n… diff truncated; review the exact action for full content.`;
+  }
+  return diffLines.join("\n");
 }
 
 const defaultWorkspace = new WorkspaceContext();

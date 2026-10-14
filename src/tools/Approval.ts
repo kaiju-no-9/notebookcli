@@ -9,6 +9,8 @@ export interface ApprovalRequest {
   readonly category: ApprovalCategory;
   readonly risk: ApprovalRisk;
   readonly action: string;
+  readonly summary?: string;
+  readonly preview?: string;
   readonly target: string;
   readonly workspaceRoot: string;
   readonly reason: string;

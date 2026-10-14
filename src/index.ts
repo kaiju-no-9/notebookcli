@@ -173,6 +173,7 @@ export function createApplication(
   const approvalService = new TerminalApprovalService();
   let statusOutput: (status: string) => void = (): void => undefined;
   let tokenOutput: (token: string) => void = (): void => undefined;
+  let toolOutput: (toolName: string, status: "running" | "completed" | "failed") => void = (): void => undefined;
   let orchestrator: Pick<Orchestrator, "process"> & Partial<Pick<Orchestrator, "getHistory" | "setHistory">>;
   if (!options.providerConfigured || providerType === undefined || apiKey === undefined || defaults === undefined || model === undefined) {
     orchestrator = { process: async (): Promise<string> => "No provider configured. Run /provider to set up your LLM provider." };
@@ -187,9 +188,10 @@ export function createApplication(
     const callbacks = {
       onStatus: (status: string): void => { terminalState.updateSpinner(status); statusOutput(status); },
       onToken: (token: string): void => { tokenOutput(token); },
+      onToolStatus: (toolName: string, status: "running" | "completed" | "failed"): void => { toolOutput(toolName, status); },
     };
     const agent = new Agent(provider, registry, callbacks, false, approvalService);
-    const specialistCallbacks = { onStatus: callbacks.onStatus };
+    const specialistCallbacks = { onStatus: callbacks.onStatus, onToolStatus: callbacks.onToolStatus };
     const subagents = new SubagentCoordinator((role: SubagentRole): Agent =>
       new Agent(provider, createReadOnlySpecialistRegistry(role, workspace), specialistCallbacks));
     const searchTool = registry.get("search");
@@ -253,6 +255,7 @@ export function createApplication(
   );
   statusOutput = (status: string): void => cli.renderStatus(status);
   tokenOutput = (token: string): void => cli.renderToken(token);
+  toolOutput = (toolName: string, status: "running" | "completed" | "failed"): void => cli.renderToolStatus(toolName, status);
   return cli;
 }
 
@@ -267,19 +270,27 @@ export async function startApplication(options: ApplicationOptions = {}): Promis
   }
   const workspace = new WorkspaceContext(selectedWorkspace);
   let startupOptions: ApplicationOptions = { ...options, workspace: workspace.root };
-  const sessionStore = new SessionStore(workspace.root);
-  const sessionRuntime: ApplicationSessionRuntime = {
-    store: sessionStore,
-    activeSession: await sessionStore.initialize(),
-  };
-  while (true) {
-    const config = await resolveApplicationConfig(startupOptions);
-    const app = createApplication(config.apiKey, config, sessionRuntime, workspace);
-    if (await app.start() !== "restart") {
-      return;
+  const startupUI = new AgentUI();
+  let stopLoading = startupUI.startLoading();
+  try {
+    const sessionStore = new SessionStore(workspace.root);
+    const sessionRuntime: ApplicationSessionRuntime = {
+      store: sessionStore,
+      activeSession: await sessionStore.initialize(),
+    };
+    while (true) {
+      const config = await resolveApplicationConfig(startupOptions);
+      const app = createApplication(config.apiKey, config, sessionRuntime, workspace);
+      await stopLoading();
+      if (await app.start() !== "restart") {
+        return;
+      }
+      // A slash-command selection is persisted and takes effect on the rebuilt pipeline.
+      startupOptions = { workspace: workspace.root };
+      stopLoading = startupUI.startLoading();
     }
-    // A slash-command selection is persisted and takes effect on the rebuilt pipeline.
-    startupOptions = { workspace: workspace.root };
+  } finally {
+    await stopLoading();
   }
 }
 
