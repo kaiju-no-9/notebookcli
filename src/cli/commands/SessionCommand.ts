@@ -41,16 +41,16 @@ const inquirerSessionPrompts: SessionCommandPrompts = {
   chooseSession: async (sessions, activeId): Promise<string> => {
     const { select } = await getInquirerPrompts();
     return select({
-      message: "Choose a coding session:",
+      message: "Choose a coding session for this project:",
       choices: sessions.map((session): { value: string; name: string } => ({
         value: session.id,
-        name: `${session.id.slice(0, 8)}  ${session.title}${session.id === activeId ? "  (active)" : ""}`,
+        name: `${session.title}${session.id === activeId ? "  ·  ACTIVE" : ""}  ·  updated ${new Date(session.updatedAt).toLocaleString()}`,
       })),
     });
   },
   confirmDelete: async (title): Promise<boolean> => {
     const { confirm } = await getInquirerPrompts();
-    return confirm({ message: `Permanently delete '${title}' and its saved conversation?`, default: false });
+    return confirm({ message: `! Delete session '${title}' and its saved conversation permanently?`, default: false });
   },
 };
 
@@ -78,7 +78,7 @@ export class SessionCommand implements SlashCommandHandler {
         await this.store.updateActiveHistory(this.currentHistory());
         const session = await this.store.create(title);
         this.activate(session);
-        return { output: `Started session '${session.title}' (${session.id}).`, restart: false };
+        return { output: `Started session '${session.title}'.`, restart: false };
       }
 
       const sessions = await this.store.list();
@@ -95,7 +95,7 @@ export class SessionCommand implements SlashCommandHandler {
         await this.store.updateActiveHistory(this.currentHistory());
         const session = await this.store.switchTo(selected.id);
         this.activate(session);
-        return { output: `Switched to '${session.title}' (${session.id}).`, restart: false };
+        return { output: `Switched to '${session.title}'.`, restart: false };
       }
 
       if (!await this.prompts.confirmDelete(selected.title)) {
@@ -104,7 +104,7 @@ export class SessionCommand implements SlashCommandHandler {
       const result = await this.store.delete(selected.id);
       this.activate(result.activeSession);
       return {
-        output: `Deleted session ${result.deletedId} and its saved conversation. Active session: '${result.activeSession.title}' (${result.activeSession.id}).`,
+        output: `Deleted session '${selected.title}' and its saved conversation. Active session: '${result.activeSession.title}'.`,
         restart: false,
       };
     } catch (error: unknown) {

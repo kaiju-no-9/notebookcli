@@ -11,6 +11,7 @@ export interface ModelUsage {
 export interface RunSnapshot {
   readonly runId: string;
   readonly startedAt: number;
+  readonly limits: RunLimits;
   readonly requestAttempts: number;
   readonly successfulResponses: number;
   readonly retries: number;
@@ -177,6 +178,7 @@ export class RunContext {
     return {
       runId: this.runId,
       startedAt: this.startedAt,
+      limits: this.limits,
       requestAttempts: this.requestAttempts,
       successfulResponses: this.successfulResponses,
       retries: this.retries,

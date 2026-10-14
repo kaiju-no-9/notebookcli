@@ -1,10 +1,13 @@
 import { realpathSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { ConfigManager } from "../config/ConfigManager.js";
 import { getInquirerPrompts, isPromptCancelled } from "./commands/SetupPrompts.js";
 
 const RECENT_WORKSPACES_KEY = "ODEN_RECENT_WORKSPACES";
 const MAX_RECENT_WORKSPACES = 5;
+const ODEN_REPOSITORY_ROOT = realpathSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.."));
 
 export interface WorkspacePickerStore {
   getStored(key: string): Promise<string | undefined>;
@@ -144,11 +147,12 @@ export async function chooseWorkspace(
 ): Promise<string | undefined> {
   const current = canonicalDirectory(currentDirectory);
   if (current === undefined) throw new Error(`Current directory is not an accessible folder: ${currentDirectory}`);
+  const defaultBrowseDirectory = current === ODEN_REPOSITORY_ROOT ? homedir() : current;
 
   try {
-    const recent = (await recentDirectories(store)).filter((entry): boolean => entry !== current);
+    const recent = (await recentDirectories(store)).filter((entry): boolean => entry !== current && entry !== ODEN_REPOSITORY_ROOT);
     const choices = [
-      { value: current, name: `Current folder  ${current}` },
+      ...(current === ODEN_REPOSITORY_ROOT ? [] : [{ value: current, name: `Current folder  ${current}` }]),
       ...recent.map((entry): { value: string; name: string } => ({ value: entry, name: `Recent  ${entry}` })),
       { value: "__native_picker__", name: "Browse for a folder in the system dialog" },
       { value: "__enter_path__", name: "Enter a project folder path" },
@@ -158,16 +162,19 @@ export async function chooseWorkspace(
     if (selected === "__quit__") return undefined;
     let candidate: string;
     if (selected === "__enter_path__") {
-      candidate = await prompts.enterPath(current);
+      candidate = await prompts.enterPath(defaultBrowseDirectory);
     } else if (selected === "__native_picker__") {
-      const result = await prompts.chooseNative(current);
+      const result = await prompts.chooseNative(defaultBrowseDirectory);
       if (result.status === "cancelled") return undefined;
-      candidate = result.status === "selected" ? result.path : await prompts.enterPath(current);
+      candidate = result.status === "selected" ? result.path : await prompts.enterPath(defaultBrowseDirectory);
     } else {
       candidate = selected;
     }
     const resolved = canonicalDirectory(candidate);
     if (resolved === undefined) throw new Error(`Selected workspace is not an accessible folder: ${candidate}`);
+    if (resolved === ODEN_REPOSITORY_ROOT) {
+      throw new Error("Oden's own installation folder is not offered as a project workspace. Use --workspace explicitly for Oden development.");
+    }
     await rememberDirectory(store, resolved);
     return resolved;
   } catch (error: unknown) {

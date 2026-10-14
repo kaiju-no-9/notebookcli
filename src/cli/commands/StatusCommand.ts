@@ -43,9 +43,9 @@ export class StatusCommand implements SlashCommandHandler {
         `Provider: ${provider ?? "Not configured"}`,
         `Model: ${model ?? "Not configured"}`,
         `Workspace: ${this.current.workspace ?? "Not configured"}`,
-        `API key: ${credential === undefined ? "Not configured" : redact(credential)}`,
-        `Web search: ${tavily ? "Tavily configured" : "Fallback search"}`,
-        `Memory: ${memoryURL ? (supermemoryKey ? "Supermemory configured" : "Configured") : "Not configured"}`,
+        `API key: ${credential === undefined ? "Not configured" : `${redact(credential)} (configured)`}`,
+        `Web search: ${tavily ? "Tavily configured ✓" : "Fallback search ○"}`,
+        `Memory: ${memoryURL ? (supermemoryKey ? "Supermemory configured ✓" : "Configured ✓") : "Not configured"}`,
       ];
       return { output: lines.join("\n"), restart: false };
     } catch (error: unknown) {

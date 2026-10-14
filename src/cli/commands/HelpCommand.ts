@@ -12,11 +12,11 @@ export class HelpCommand implements SlashCommandHandler {
   public constructor(private readonly commands: () => readonly ListedSlashCommand[]) {}
 
   public async execute(): Promise<SlashCommandResult> {
-    const lines = ["Available commands:"];
+    const lines = ["ODEN COMMANDS"];
     for (const command of this.commands()) {
-      lines.push(`  /${command.name.padEnd(9)} — ${command.description}`);
+      lines.push(`  /${command.name.padEnd(9)}  ${command.description}`);
     }
-    lines.push("  exit / quit — Exit Oden");
+    lines.push("  exit / quit  Exit Oden");
     return { output: lines.join("\n"), restart: false };
   }
 }

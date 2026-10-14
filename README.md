@@ -1,5 +1,7 @@
 # Oden
 
+![Oden terminal wordmark](assets/oden-terminal-logo.png)
+
 Oden is an autonomous terminal agent harness that uses OpenRouter by default and can also use Google Gemini. It is designed to research tasks, modify codebases, run commands inside a Docker sandbox, enforce safety guardrails, and retain user preferences.
 
 ## Requirements
@@ -22,7 +24,7 @@ For local credentials, copy `.env.example` to `.env` if needed, then set one or 
 
 1. Install dependencies with `bun install`.
 2. In `.env`, set `OPENROUTER_API_KEY` and/or `GEMINI_API_KEY` to the keys you want to test.
-3. Start Oden with `bun run start`.
+3. Start Oden with `bun run start`. In an interactive terminal, a brief Oden wordmark appears while the workspace session and provider settings load, then clears to the ready screen.
 4. At the prompt, ask a simple question such as `What is 2 + 2?`. Oden shows a working status and prints response text as it arrives from the selected provider. Coding tasks also stream text while retaining tool calls and the usual approval checks.
 5. Type `quit` to exit.
 
@@ -32,7 +34,7 @@ On an interactive terminal, Oden asks you to choose a project workspace at start
 
 To manually check code tools, start Oden in a disposable Git project, then ask it to create a small file and verify the file yourself. The command tool uses the Docker sandbox, so build it once with `docker compose build sandbox` and make sure Docker is running. Review any requested actions before allowing commands that modify files.
 
-Oden asks for explicit terminal approval before confirmation-class shell/Git operations, package installs, overwriting existing files, or writing sensitive files. The prompt shows the exact action, target, workspace, risk, and reason. Rejecting, cancelling, timing out, interrupting, or running without an interactive terminal denies the operation. Hard-blocked commands (including force push and hard reset) cannot be approved. The REPL input is paused while an approval prompt is active.
+Oden asks for explicit terminal approval before confirmation-class shell/Git operations, package installs, overwriting existing files, or writing sensitive files. The prompt shows a concise action summary, target, workspace, risk, and reason; select the review option to inspect the proposed file diff or exact action before approving. Rejecting, cancelling, timing out, interrupting, or running without an interactive terminal denies the operation. Hard-blocked commands (including force push and hard reset) cannot be approved. The REPL input is paused while an approval prompt is active.
 
 OpenRouter defaults to `openrouter/free`, which routes requests to currently available free models and filters for request features such as tool calling and structured outputs. Gemini defaults to `gemini-3.8-flash` with `gemini-3.5-flash-lite` for guard checks. Model environment settings are `OPENROUTER_MODEL`, `OPENROUTER_GUARD_MODEL`, `GEMINI_MODEL`, and `GEMINI_GUARD_MODEL`. Type `exit` or `quit` to close the REPL.
 

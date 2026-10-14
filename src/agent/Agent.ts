@@ -85,6 +85,7 @@ export class Agent {
       messages.push(modelMessage(act.text, calls));
       for (const call of calls) {
         runContext?.recordToolInvocation();
+        this.callbacks?.onToolStatus?.(call.name, "running");
         const tool = this.tools.get(call.name);
         let result: string;
         if (tool === undefined) {
@@ -96,6 +97,7 @@ export class Agent {
               result = `Error: invalid arguments for '${call.name}': ${parsedArgs.error.message}`;
               messages.push({ role: "tool", parts: [{ functionResponse: { ...(call.id === undefined ? {} : { toolCallId: call.id }), name: call.name, response: result } }] });
               toolCalls.push({ name: call.name, args: structuredClone(call.args), result, timestamp: Date.now() });
+              this.callbacks?.onToolStatus?.(call.name, "failed");
               continue;
             }
             result = await tool.execute(parsedArgs.data, {
@@ -108,6 +110,7 @@ export class Agent {
           }
         }
         toolCalls.push({ name: call.name, args: structuredClone(call.args), result, timestamp: Date.now() });
+        this.callbacks?.onToolStatus?.(call.name, /^Error(?: executing tool|:)/.test(result) ? "failed" : "completed");
         const failureKey = `${call.name}:${canonicalize(call.args)}`;
         if (/^Error(?: executing tool|:)/.test(result)) {
           const failures = (repeatedFailures.get(failureKey) ?? 0) + 1;

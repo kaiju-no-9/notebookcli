@@ -4,6 +4,8 @@ import type { ProviderType } from "../config/ModelCatalog.js";
 import { AgentUI } from "./AgentUI.js";
 import { SlashCommandRouter } from "./SlashCommandRouter.js";
 import { TerminalState } from "./TerminalState.js";
+import type { ToolActivityStatus } from "../agent/RunCallbacks.js";
+import type { RunSnapshot } from "../utils/RunContext.js";
 
 export interface PromptReader {
   question(prompt: string): Promise<string>;
@@ -13,12 +15,14 @@ export interface PromptReader {
 export interface ProcessOrchestrator {
   process(input: string): Promise<string>;
   cancelActiveRun?(): void;
+  getLastRunSnapshot?(): RunSnapshot | undefined;
 }
 
 export interface CLIConfig {
   readonly provider?: ProviderType;
   readonly model?: string;
   readonly providerConfigured: boolean;
+  readonly workspace?: string;
   readonly sessionTitle?: () => string;
 }
 
@@ -52,6 +56,7 @@ export class AgentCLI {
   ) {}
 
   public renderToken(token: string): void {
+    if (this.streamedText.length === 0) this.ui.renderResponseStart();
     this.streamedText += token;
     this.ui.renderToken(token);
   }
@@ -61,8 +66,23 @@ export class AgentCLI {
     this.ui.renderStatus(status);
   }
 
+  public renderToolStatus(toolName: string, status: ToolActivityStatus): void {
+    this.ui.renderToolStatus(toolName, status);
+  }
+
   public async start(): Promise<"exit" | "restart"> {
-    this.ui.render("Oden is ready. Enter 'exit' or 'quit' to leave.");
+    const model = this.config.model ?? "unknown model";
+    const displayModel = this.config.provider === "openrouter" && model.startsWith("openrouter/")
+      ? model.slice("openrouter/".length)
+      : model;
+    const providerModel = this.config.providerConfigured && this.config.provider !== undefined
+      ? `${this.config.provider}/${displayModel}`
+      : "No provider configured";
+    this.ui.renderWelcome({
+      workspace: this.config.workspace,
+      providerModel,
+      sessionTitle: this.config.sessionTitle?.(),
+    });
     const createReader = this.readerFactory ?? (this.reader === undefined ? defaultReader : (): PromptReader => this.reader as PromptReader);
     const canReopenReader = this.reader === undefined || this.readerFactory !== undefined;
     let reader = createReader();
@@ -107,13 +127,13 @@ export class AgentCLI {
           }
           try {
             const result = await this.slashCommands.dispatch(input);
-            this.ui.render(result.output);
+            this.ui.renderCommandResult(result.output);
             if (result.restart) {
               restartRequested = true;
               break;
             }
           } catch (error: unknown) {
-            this.ui.render(`Command failed: ${error instanceof Error ? error.message : String(error)}`);
+            this.ui.renderError(`Command failed: ${error instanceof Error ? error.message : String(error)}`);
           } finally {
             if (canReopenReader && !restartRequested && !interrupted) {
               reader = createReader();
@@ -133,12 +153,14 @@ export class AgentCLI {
           const response = await this.orchestrator.process(input);
           if (this.streamedText.length > 0) {
             this.ui.finishStream();
-            if (this.streamedText !== response) this.ui.render(response);
+            if (this.streamedText !== response) this.ui.renderResponse(response);
           } else {
-            this.ui.render(response);
+            this.ui.renderResponse(response);
           }
+          const snapshot = this.orchestrator.getLastRunSnapshot?.();
+          if (snapshot !== undefined) this.ui.renderRunSummary(snapshot);
         } catch (error: unknown) {
-          this.ui.render(`Request failed: ${error instanceof Error ? error.message : String(error)}`);
+          this.ui.renderError(`Request failed: ${error instanceof Error ? error.message : String(error)}`);
         } finally {
           this.terminalState.stopSpinner();
           if (canReopenReader && !interrupted) reader = createReader();
@@ -159,6 +181,6 @@ export class AgentCLI {
 
   private sessionPromptLabel(): string {
     const title = this.config.sessionTitle?.().trim();
-    return title === undefined || title.length === 0 ? "" : ` | ${title}`;
+    return title === undefined || title.length === 0 ? "" : ` | ${title.length <= 28 ? title : `${title.slice(0, 27).trimEnd()}…`}`;
   }
 }
