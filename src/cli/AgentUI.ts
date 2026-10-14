@@ -26,7 +26,7 @@ export interface UIContext {
 export class AgentUI {
   private readonly write: (text: string) => void;
   private readonly writeStream: (text: string) => void;
-  private readonly chalk: Chalk;
+  private readonly chalk: InstanceType<typeof Chalk>;
   private readonly asciiOnly: boolean;
   private readonly interactiveTerminal: boolean;
 

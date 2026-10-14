@@ -24,6 +24,7 @@
 | 16 | Priority 1B: Canonical Workspace | 🔄 In Progress | Workspace context, native project selection, host/Docker wiring, and path tests are implemented. User reports manual validation completed; automated baseline passed 204 tests and TypeScript. Phase commit/push not verified. |
 | 17 | Priority 1C: Enforceable Human Approval | 🔄 In Progress | Exact-action approval is wired through Agent, shell, Git, and file writes; hard blocks remain non-overridable. User reports manual validation completed; automated baseline passed 204 tests and TypeScript. Phase commit/push not verified. |
 | 18 | Complex-Task Subagents | 🔄 In Progress | Added same-call complexity/planning contract, deterministic eligibility and shared-budget reserve, bounded read-only specialists, parent synthesis, Ctrl+C cancellation, Gemini/OpenRouter tool-enabled token streaming, CLI status events, and focused coverage. Delegation now selects automatically for eligible complex tasks, with a default cap of 2 and configurable range 0–3. Full suite passes (220 tests, 584 assertions); installed TypeScript and `git diff --check` pass. Live provider acceptance and commit/push remain pending. |
+| 19 | npm CLI Package | 🔄 In Progress | Added a Node launcher for the Bun-powered CLI, TypeScript build output, npm package allowlist, pinned direct dependencies, optional keytar fallback, packaged Docker assets, install docs, and CI archive/install smoke steps. Typecheck, full tests (220 tests, 599 assertions), build, npm archive inspection, extracted-package CLI smoke (`--help`, `--version`), and `git diff --check` pass. Actual npm installation is pending: registry dependencies are unavailable in this environment; CI now tests tarball installation. No publish or push. |
 
 ## Status Legend
 
@@ -36,6 +37,7 @@
 
 ## Known Issues
 
+- Phase 19 — local npm installation of the tarball could not complete: offline mode returned `ENOTCACHED`, and a network-enabled retry stalled without output and was interrupted. The tarball was extracted and its launcher smoke-tested with the repository's installed dependencies. CI runs the full tarball installation on a network-enabled runner. Confirm npm package-name availability and choose a license before publication.
 - Phase 1 is complete and pushed. `bun test` reports no test files because this scaffolding phase defines none.
 - Phase 2 is complete and pushed. All 22 phase tests pass; `bunx tsc --noEmit` passes.
 - Phase 3 is complete and pushed. Configuration tests and the full suite pass (27 tests).

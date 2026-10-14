@@ -49,7 +49,7 @@ describe("TerminalApprovalService", (): void => {
   it("aborts a prompt that exceeds its configured timeout", async (): Promise<void> => {
     const service = new TerminalApprovalService(
       (): boolean => true,
-      (_message, signal): Promise<boolean> => new Promise((_resolve, reject): void => {
+      (_message, signal): Promise<"diff" | "action" | "approve" | "reject"> => new Promise((_resolve, reject): void => {
         signal.addEventListener("abort", (): void => reject(new Error("aborted")), { once: true });
       }),
       1,

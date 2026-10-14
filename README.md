@@ -6,19 +6,35 @@ Oden is an autonomous terminal agent harness that uses OpenRouter by default and
 
 ## Requirements
 
-- Bun 1.1 or later (primary runtime), or Node.js 18 or later for compatible tooling.
+- Bun 1.1 or later (required application runtime).
+- Node.js 20.17 or later to install and run the npm-installed `oden` launcher.
 - Docker with Docker Compose and Buildx for building and running the command sandbox.
 - An OpenRouter API key and/or a Google Gemini API key. Gemini keys may use the classic `AIza…` format or the newer `AQ.…` authorization-key format. Set `OPENROUTER_API_KEY` and/or `GEMINI_API_KEY` in the environment or enter the selected provider's key when prompted.
 
-## Setup
+## Install from npm
+
+Install Oden globally, then run it from the project directory you want it to work on:
+
+```sh
+npm install --global oden-agent
+cd /path/to/your/project
+oden
+```
+
+The `oden` launcher starts the packaged CLI with Bun. If Bun is missing, Oden prints the installation requirement. On first run, choose a workspace and configure OpenRouter or Gemini. Docker Compose is used for sandboxed command execution; Oden builds its packaged sandbox image when needed.
+
+Upgrade with `npm install --global oden-agent@latest`; uninstall with `npm uninstall --global oden-agent`.
+
+## Develop from source
 
 ```sh
 bun install
+bun run build
 bun run typecheck
 bun test
 ```
 
-For local credentials, copy `.env.example` to `.env` if needed, then set one or both API keys. Bun loads `.env` automatically; `.env` is ignored by Git. Keep keys private.
+For local development credentials, copy `.env.example` to `.env` if needed, then set one or both API keys. Bun loads `.env` automatically; `.env` is ignored by Git. Keep keys private. The npm-installed CLI reads the selected project's environment through Bun and also supports entering keys using `/provider`.
 
 ## Manual test
 
@@ -76,7 +92,7 @@ The sandbox runs as an unprivileged user, drops Linux capabilities, and sets CPU
 
 ## Native dependency note
 
-The `keytar` dependency uses native OS keychain integration. On Linux, installing it may require the platform's Secret Service development package (for example, `libsecret-1-dev`). If installation fails while building this dependency, install the matching development headers for your distribution and retry `bun install`.
+OS keychain integration through `keytar` is optional. Oden falls back to an encrypted credential file under `~/.oden` when the native keychain module is unavailable. On Linux, enabling `keytar` may require the platform's Secret Service development package (for example, `libsecret-1-dev`); Oden can still run with the encrypted-file fallback if that optional module cannot be installed.
 
 ## Project status
 

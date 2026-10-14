@@ -314,7 +314,9 @@ export async function main(argv: string[] = process.argv): Promise<void> {
 
 const invokedAsOdenEntry = process.argv[1] === "src/index.ts"
   || process.argv[1]?.endsWith("/src/index.ts") === true
-  || process.argv[1]?.endsWith("\\src\\index.ts") === true;
+  || process.argv[1]?.endsWith("\\src\\index.ts") === true
+  || process.argv[1]?.endsWith("/dist/index.js") === true
+  || process.argv[1]?.endsWith("\\dist\\index.js") === true;
 
 if (import.meta.main && invokedAsOdenEntry) {
   await main();
