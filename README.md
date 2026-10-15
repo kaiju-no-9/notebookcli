@@ -1,99 +1,227 @@
+<div align="center">
+
+<img width="760" alt="Oden terminal wordmark" src="assets/oden-terminal-logo.png" />
+
 # Oden
 
-![Oden terminal wordmark](assets/oden-terminal-logo.png)
+### A terminal coding agent that works inside your project
 
-Oden is an autonomous terminal agent harness that uses OpenRouter by default and can also use Google Gemini. It is designed to research tasks, modify codebases, run commands inside a Docker sandbox, enforce safety guardrails, and retain user preferences.
+Research, edit files, and run approved commands with Gemini or OpenRouter—while Oden keeps the work scoped to your selected workspace.
 
-## Requirements
+[![npm version](https://img.shields.io/npm/v/oden-agent?color=cb3837&logo=npm)](https://www.npmjs.com/package/oden-agent)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
+![Bun](https://img.shields.io/badge/Bun-runtime-f9f1e1?logo=bun&logoColor=000000)
+![Docker](https://img.shields.io/badge/Docker-sandbox-2496ED?logo=docker&logoColor=white)
+[![CI](https://github.com/kaiju-no-9/notebookcli/actions/workflows/ci.yml/badge.svg)](https://github.com/kaiju-no-9/notebookcli/actions/workflows/ci.yml)
 
-- Bun 1.1 or later (required application runtime).
-- Node.js 20.17 or later to install and run the npm-installed `oden` launcher.
-- Docker with Docker Compose and Buildx for building and running the command sandbox.
-- An OpenRouter API key and/or a Google Gemini API key. Gemini keys may use the classic `AIza…` format or the newer `AQ.…` authorization-key format. Set `OPENROUTER_API_KEY` and/or `GEMINI_API_KEY` in the environment or enter the selected provider's key when prompted.
+</div>
 
-## Install from npm
+---
 
-Install Oden globally, then run it from the project directory you want it to work on:
+## What is Oden?
+
+Oden is an autonomous terminal agent harness for coding and research tasks. Start it in a project, describe the change, and Oden can inspect the workspace, search for information, edit files, and use a Docker sandbox for shell commands. It supports **OpenRouter** and **Google Gemini**.
+
+Oden is designed to make agent work understandable and bounded: it streams progress in the terminal, asks before sensitive or higher-risk actions, and keeps project conversations in separate sessions.
+
+## Features
+
+| Capability | What Oden does |
+|---|---|
+| **Coding agent** | Reads project files, creates and edits code, and runs commands in a Docker sandbox. |
+| **Gemini and OpenRouter** | Select a provider and model in setup or with `/provider`. |
+| **Live terminal updates** | Streams provider text and shows concise tool and specialist activity while a task runs. |
+| **Workspace boundaries** | Choose a project from a native folder dialog, recent folders, the current folder, or a typed path. File and Git tools use the selected workspace. |
+| **Human approval** | Review and approve confirmation-class shell and Git commands, package installs, overwrites, and sensitive file writes. Hard-blocked commands cannot be approved. |
+| **Persistent sessions** | Keep separate conversation histories per project; create, switch, and delete sessions with `/sessions`. |
+| **Complex-task specialists** | For eligible multi-part coding tasks, Oden can ask bounded, read-only specialists to inspect and plan. The parent agent remains the only writer. |
+| **Web and memory tools** | Search with fallback providers or configure Tavily. Connect Supermemory for explicit memory save and recall. |
+| **Secret-aware configuration** | Store provider and service credentials through the OS keychain when available, with an encrypted local-file fallback. Logs redact recognized secrets. |
+
+## How it works
+
+```mermaid
+flowchart LR
+    U[You in the terminal] --> CLI[Oden CLI]
+    CLI --> ORCH[Orchestrator and guardrails]
+    ORCH --> AGENT[Research or coding agent]
+    AGENT <--> LLM[Gemini or OpenRouter]
+    AGENT --> TOOLS[File, Git, search, memory, and command tools]
+    TOOLS --> WS[Selected project workspace]
+    TOOLS --> DOCKER[Docker command sandbox]
+    CLI <--> LOCAL[Local config and project sessions]
+    AGENT -. eligible complex tasks .-> SUB[Read-only specialists]
+    SUB -. bounded evidence .-> AGENT
+```
+
+The selected workspace is shared by file tools, Git, sessions, and the Docker mount. Oden rejects file access that escapes the workspace through `..` or symlinks, and file tools do not read credential-like files such as `.env`.
+
+## Technology
+
+- **TypeScript** with strict type checking
+- **Bun** as the application runtime
+- **Google Gemini** and **OpenRouter** provider integrations
+- **Docker Compose** for sandboxed command execution
+- **Zod** for runtime validation
+- **Bun test** for the test suite
+
+## Install and run
+
+### Requirements
+
+- Node.js **20.17 or later** to run the npm launcher
+- Bun **1.1 or later** to run Oden
+- Docker with Docker Compose and Buildx for sandboxed command execution
+- An OpenRouter API key or Google Gemini API key
+
+### Install the tested npm release
 
 ```sh
-npm install --global oden-agent
+npm install --global oden-agent@1.0.0
+```
+
+Run Oden from the project you want to work on:
+
+```sh
 cd /path/to/your/project
 oden
 ```
 
-The `oden` launcher starts the packaged CLI with Bun. If Bun is missing, Oden prints the installation requirement. On first run, choose a workspace and configure OpenRouter or Gemini. Docker Compose is used for sandboxed command execution; Oden builds its packaged sandbox image when needed.
+On first launch, select a workspace and configure a provider with `/provider`. Oden can use an existing environment key or securely prompt for one. Start with `oden --help` to see CLI options.
 
-Upgrade with `npm install --global oden-agent@latest`; uninstall with `npm uninstall --global oden-agent`.
+> The install command is pinned to `1.0.0` so it selects the release tested with this README. When a newer stable release is available, install its explicit version. Uninstall with:
+>
+> ```sh
+> npm install --global oden-agent@<version>
+> npm uninstall --global oden-agent
+> ```
 
-## Develop from source
+## First session
 
-```sh
-bun install
-bun run build
-bun run typecheck
-bun test
+```text
+oden
+/provider
+/status
+Create a small test file that says hello.
+/sessions
+quit
 ```
 
-For local development credentials, copy `.env.example` to `.env` if needed, then set one or both API keys. Bun loads `.env` automatically; `.env` is ignored by Git. Keep keys private. The npm-installed CLI reads the selected project's environment through Bun and also supports entering keys using `/provider`.
+Review approval prompts before allowing changes. For command execution, make sure Docker is running; the sandbox image can be built with `docker compose build sandbox` from the Oden source checkout.
 
-## Manual test
-
-1. Install dependencies with `bun install`.
-2. In `.env`, set `OPENROUTER_API_KEY` and/or `GEMINI_API_KEY` to the keys you want to test.
-3. Start Oden with `bun run start`. In an interactive terminal, a brief Oden wordmark appears while the workspace session and provider settings load, then clears to the ready screen.
-4. At the prompt, ask a simple question such as `What is 2 + 2?`. Oden shows a working status and prints response text as it arrives from the selected provider. Coding tasks also stream text while retaining tool calls and the usual approval checks.
-5. Type `quit` to exit.
-
-OpenRouter is the default. To test Gemini, run `bun run start -- --provider gemini`; to use OpenRouter, run `bun run start -- --provider openrouter`. You can also set `ODEN_PROVIDER=gemini` or `ODEN_PROVIDER=openrouter` in `.env`. Use `--model <model-name>` to override the selected provider's primary model.
-
-On an interactive terminal, Oden asks you to choose a project workspace at startup. The picker offers the current folder, up to five recent project folders, a system folder dialog, entering a path manually, or cancelling startup. macOS uses the system folder chooser; Windows uses the .NET Windows Forms folder browser; Linux tries Zenity and then KDialog. If the platform dialog is unavailable, Oden falls back to manual path entry. Recent paths are stored with Oden's local credential settings. Set `ODEN_WORKSPACE=/absolute/path` in `.env`, or run `bun run start -- --workspace /absolute/path`, to skip the picker. In non-interactive runs, Oden uses the current directory unless one of those workspace overrides is set. The resolved workspace is shown by `/status` and is shared by host file/Git tools, project sessions, and the Docker shell. File reads cannot escape that root through `..` or symlinks, and credential-like files such as `.env` are not readable by file tools.
-
-To manually check code tools, start Oden in a disposable Git project, then ask it to create a small file and verify the file yourself. The command tool uses the Docker sandbox, so build it once with `docker compose build sandbox` and make sure Docker is running. Review any requested actions before allowing commands that modify files.
-
-Oden asks for explicit terminal approval before confirmation-class shell/Git operations, package installs, overwriting existing files, or writing sensitive files. The prompt shows a concise action summary, target, workspace, risk, and reason; select the review option to inspect the proposed file diff or exact action before approving. Rejecting, cancelling, timing out, interrupting, or running without an interactive terminal denies the operation. Hard-blocked commands (including force push and hard reset) cannot be approved. The REPL input is paused while an approval prompt is active.
-
-OpenRouter defaults to `openrouter/free`, which routes requests to currently available free models and filters for request features such as tool calling and structured outputs. Gemini defaults to `gemini-3.8-flash` with `gemini-3.5-flash-lite` for guard checks. Model environment settings are `OPENROUTER_MODEL`, `OPENROUTER_GUARD_MODEL`, `GEMINI_MODEL`, and `GEMINI_GUARD_MODEL`. Type `exit` or `quit` to close the REPL.
-
-## Interactive configuration
-
-Oden shows the active provider and model in the REPL prompt. Use these slash commands to change provider settings or configure optional services:
+## CLI commands
 
 | Command | Purpose |
 |---|---|
-| `/provider` | Choose Gemini or OpenRouter, reuse an existing key or enter one if missing, and select a supported model. Oden saves the settings and restarts the application pipeline. |
-| `/web` | Save a Tavily API key for higher quality web search. Leave it blank to keep using fallback search. |
-| `/memory` | Connect Supermemory by entering its API key in a hidden prompt. |
-| `/delete` | Choose and delete a saved Gemini, OpenRouter, Supermemory, or Tavily API key. |
-| `/sessions` | Create, switch, or permanently delete project-scoped conversation sessions. |
-| `/status` | Show the active provider, model, and configured services. API keys are masked. |
+| `/provider` | Choose Gemini or OpenRouter, configure a key if needed, and select a supported model. |
+| `/web` | Configure Tavily for web search; fallback search remains available without a key. |
+| `/memory` | Connect Supermemory using a hidden API-key prompt. |
+| `/delete` | Remove a saved provider or service key. |
+| `/sessions` | Create, switch, or delete project-scoped conversation sessions. |
+| `/status` | Show the active provider, model, workspace, and configured services; keys are masked. |
 | `/help` | List available commands. |
+| `exit` or `quit` | Leave Oden. |
 
-Provider, model, and service settings are saved through Oden's `ConfigManager` (OS keychain when available, otherwise an encrypted file under `~/.oden`). `/provider` accepts Gemini keys in both `AIza…` and `AQ.…` formats. Existing environment variables and `.env` settings continue to work; command-line `--provider` and `--model` options take precedence at startup. If no provider and API key are configured, Oden starts in setup mode and accepts `/provider`, `/status`, `/help`, and `/sessions` until a provider is set.
+CLI options:
 
-Each user turn shares configurable LLM, tool, time, and token budgets across guardrails, routing, research, coding, and streaming. Defaults and `ODEN_MAX_*` overrides are listed in `.env.example`. The regular coding agent makes one model request per iteration with tools enabled; optional planning is off by default. Gemini and OpenRouter stream tool-enabled agent responses, including incremental function-call assembly. Usage is recorded when the provider includes stream usage metadata; otherwise the run budget estimates it. Stream text is displayed before the final output guardrail result is available.
+```sh
+oden --provider gemini
+oden --provider openrouter
+oden --model <model-name>
+oden --workspace /absolute/path/to/project
+```
 
-For complex coding requests with at least two independent workstreams, Oden automatically delegates eligible work to up to two read-only specialists. Users do not need to configure this for ordinary use. The existing Supervisor proposes workstreams, and deterministic policy keeps simple tasks on the single-agent path. The configurable `ODEN_MAX_SUBAGENTS` cap defaults to `2` and has a maximum of `3`; set it to `0` to disable delegation or `1` to keep it disabled because a valid plan needs at least two specialists. Specialists share the parent turn's request/token/tool/deadline budget, run at most two at a time, and cannot write files, run commands, use Git, or save session history. The parent verifies their evidence, makes any changes through the regular approval and workspace checks, and returns the only user-facing response.
+OpenRouter defaults to `openrouter/free`. Gemini defaults to `gemini-3.8-flash`. Use `/provider` to change the provider or model interactively.
 
-To check the automatic behavior, start Oden with the default settings. Ask a simple question or one-file edit and confirm it uses the normal path. Then ask for a multi-part change that needs repository inspection and test planning. Watch the concise specialist statuses, confirm the parent checks evidence and uses the ordinary approval prompt for writes, and interrupt with Ctrl+C to stop in-flight provider requests. Set `ODEN_MAX_SUBAGENTS=0` only if you want delegation disabled; a small `ODEN_MAX_LLM_REQUESTS` value can verify delegation is skipped when the parent synthesis reserve cannot be held.
+## Workspace selection
 
-Sessions keep separate conversation histories for each project directory and automatically resume the active session on restart. Run `/sessions` to create, switch, or delete sessions. Deleting a session removes its saved history; deleting the active session switches to the most recently used remaining session, or creates a fresh empty session. Session files are stored under `~/.oden/sessions/` with owner-only permissions. Recognized secrets are redacted, but conversation text is otherwise plaintext on disk. Sessions share the same project files; they do not create separate Git worktrees.
+In an interactive terminal, Oden offers the current folder, recent folders, a native system folder dialog, manual path entry, and cancellation. It uses the current folder by default only in non-interactive runs.
 
-To connect Supermemory, run `/memory` and enter your API key at the hidden prompt. Oden uses `https://api.supermemory.ai/v3`, stores the key through `ConfigManager`, and sends it as a Bearer token. You can also set `MEMORY_API_URL=https://api.supermemory.ai/v3` and `SUPERMEMORY_API_KEY` in `.env`.
+You can skip the picker with an environment variable or CLI option:
 
-## Sandbox
+```sh
+ODEN_WORKSPACE=/absolute/path/to/project oden
+oden --workspace /absolute/path/to/project
+```
 
-Build the isolated command environment with:
+macOS uses AppleScript for the folder dialog, Windows uses PowerShell and Windows Forms, and Linux tries Zenity then KDialog. If a desktop dialog is unavailable, Oden offers manual path entry.
+
+## Providers and optional services
+
+Set provider keys through Oden's `/provider` flow, or provide environment variables:
+
+```sh
+OPENROUTER_API_KEY=your-key
+GEMINI_API_KEY=your-key
+```
+
+Gemini accepts classic `AIza…` keys and newer `AQ.…` authorization keys. OpenRouter is the default provider. Environment model settings include `OPENROUTER_MODEL`, `OPENROUTER_GUARD_MODEL`, `GEMINI_MODEL`, and `GEMINI_GUARD_MODEL`.
+
+Optional integrations:
+
+| Integration | Setup |
+|---|---|
+| Tavily web search | Run `/web` and enter a key, or set `TAVILY_API_KEY`. Fallback search works without it. |
+| Supermemory | Run `/memory`, or configure `SUPERMEMORY_API_KEY` with `MEMORY_API_URL=https://api.supermemory.ai/v3`. |
+| OS keychain | Used when available for credentials. Oden falls back to an encrypted file under `~/.oden`. |
+
+Copy `.env.example` to `.env` for local development. `.env` is ignored by Git; keep API keys private.
+
+## Sessions, budgets, and specialists
+
+Oden resumes the active session for the selected project and saves conversation history after completed turns. Session files live under `~/.oden/sessions/` with owner-only permissions. Recognized secrets are redacted, but conversation text is otherwise stored as plaintext. Sessions share project files; they do not create separate Git worktrees.
+
+Each user turn shares configurable request, token, tool, and time budgets across routing, guardrails, research, coding, and streaming. Defaults and `ODEN_MAX_*` settings are listed in `.env.example`.
+
+For eligible complex coding tasks, Oden may start up to two read-only specialists by default. They share the parent turn's budgets and cannot edit files, execute commands, or use Git. Set `ODEN_MAX_SUBAGENTS=0` to disable delegation, or adjust the cap in the range 1–3.
+
+## Safety and sandbox
+
+Oden asks for approval before confirmation-class shell or Git operations, package installs, overwriting existing files, and sensitive writes. The prompt shows the proposed action and its target. Rejecting, cancelling, timing out, or interrupting denies the operation. Hard-blocked commands—including force pushes and hard resets—cannot be approved.
+
+Commands run in a Docker Compose sandbox with an unprivileged user, dropped Linux capabilities, and configured CPU, memory, and process limits. Start Docker before using command execution. From a source checkout, build the image with:
 
 ```sh
 docker compose build sandbox
 ```
 
-The sandbox runs as an unprivileged user, drops Linux capabilities, and sets CPU, memory, and process limits in `docker-compose.yaml`.
+## Develop from source
 
-## Native dependency note
+```sh
+git clone https://github.com/kaiju-no-9/notebookcli.git
+cd notebookcli
+bun install
+bun run start
+```
 
-OS keychain integration through `keytar` is optional. Oden falls back to an encrypted credential file under `~/.oden` when the native keychain module is unavailable. On Linux, enabling `keytar` may require the platform's Secret Service development package (for example, `libsecret-1-dev`); Oden can still run with the encrypted-file fallback if that optional module cannot be installed.
+Common checks:
 
-## Project status
+```sh
+bun run typecheck
+bun test --parallel=1
+bun run build
+npm pack --dry-run
+```
 
-The implementation is being built in the documented phases under `docs/implementation/`. Current verification and blockers are tracked in `docs/progress.md` and `docs/progress/status.md`.
+## Project layout
+
+```text
+oden/
+├── bin/                 # Node.js shim for the npm-installed `oden` command
+├── src/
+│   ├── agent/           # Coding and research agent loops
+│   ├── cli/             # Terminal UI, workspace picker, slash commands
+│   ├── config/          # Providers, models, credentials, run limits
+│   ├── guardrails/      # Input/output checks and secret scanning
+│   ├── orchestration/   # Routing, run coordination, specialist policy
+│   ├── providers/       # Gemini and OpenRouter adapters and streaming
+│   ├── sessions/        # Project-scoped persistent sessions
+│   ├── tools/           # File, Git, search, memory, and command tools
+│   └── utils/           # Workspace context, budgets, shared utilities
+├── docker-compose.yaml  # Sandboxed command environment
+└── sandbox.Dockerfile   # Sandbox image definition
+```
+
+## Documentation
+
+See [`docs/README.md`](docs/README.md) for the implementation roadmap, architecture notes, module specifications, and testing strategy.
