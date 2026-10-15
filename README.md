@@ -77,7 +77,7 @@ The selected workspace is shared by file tools, Git, sessions, and the Docker mo
 ### Install the tested npm release
 
 ```sh
-npm install --global oden-agent@1.0.0
+npm install --global oden-agent
 ```
 
 Run Oden from the project you want to work on:

@@ -1,8 +1,12 @@
 {
   "name": "oden-agent",
-  "version": "1.0.0",
+  "version": "1.0.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kaiju-no-9/oden.git"
+  },
   "type": "module",
-  "bin": { "oden": "./bin/oden.js" },
+  "bin": { "oden": "bin/oden.js" },
   "engines": { "node": ">=20.17.0" },
   "files": [
     "bin/oden.js",
